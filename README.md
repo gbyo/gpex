@@ -1,4 +1,4 @@
-# GpEx
+# GPeX
 
 A GPS track recorder for photographers. Start a recording, pocket the phone, shoot the
 game, stop, export a `.gpx` file, and let Lightroom Classic assign coordinates to your
