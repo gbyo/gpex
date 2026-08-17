@@ -86,10 +86,10 @@ struct SessionDetailView: View {
                         offsetSeconds: session.cameraClockOffsetSeconds
                     )
                 } label: {
-                    LabeledContent(
-                        "Camera Clock Correction",
-                        value: ClockCorrection(offsetSeconds: session.cameraClockOffsetSeconds).summary
-                    )
+                    LabeledContent("Camera Clock Correction") {
+                        Text(ClockCorrection(offsetSeconds: session.cameraClockOffsetSeconds).summary)
+                            .accessibilityIdentifier("cameraClockCorrectionSummary")
+                    }
                 }
                 .accessibilityIdentifier("cameraClockCorrection")
             } footer: {
