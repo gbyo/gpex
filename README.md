@@ -73,7 +73,7 @@ The deployment target remains iOS 26.0 and the project does not currently depend
 
 ## Building
 
-Clone the repository and open `GpEx.xcodeproj` in Xcode.
+Clone the repository and open `GPeX.xcodeproj` in Xcode.
 
 Before running on a device:
 
@@ -83,14 +83,14 @@ Before running on a device:
 The current placeholder is:
 
 ```text
-com.example.PhotoTrack
+com.example.GPeX
 ```
 
 If your active developer directory is not the Xcode beta installation, tests can also be run with:
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-xcodebuild -project GpEx.xcodeproj -scheme GpEx \
+xcodebuild -project GPeX.xcodeproj -scheme GPeX \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 

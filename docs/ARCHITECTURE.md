@@ -42,7 +42,7 @@ GPeX uses **When In Use + temporary full accuracy + a background activity sessio
 The app also does not call `requestWhenInUseAuthorization()` directly. Instead, it creates and retains:
 
 ```swift
-CLServiceSession(authorization: .whenInUse, fullAccuracyPurposeKey: "PhotoTracking")
+CLServiceSession(authorization: .whenInUse, fullAccuracyPurposeKey: "GPeXTracking")
 ```
 
 Creating the service session is what prompts the user. Its diagnostics sequence reports the result, including `fullAccuracyDenied` when Precise Location is disabled.
@@ -196,7 +196,7 @@ The **Camera Clock** screen shows a large local clock to tenths of a second, the
 ## Component overview
 
 ```text
-GpExApp / AppDelegate       @UIApplicationDelegateAdaptor; restores on launch
+GPeXApp / AppDelegate       @UIApplicationDelegateAdaptor; restores on launch
 AppServices                 composition root
 
 RecordingCoordinator        @MainActor @Observable; owns the state machine,
@@ -227,7 +227,7 @@ Everything user-visible runs on the main actor. Location updates are infrequent 
 GPeX uses:
 
 - `NSLocationWhenInUseUsageDescription`
-- `NSLocationTemporaryUsageDescriptionDictionary` → `PhotoTracking`
+- `NSLocationTemporaryUsageDescriptionDictionary` → `GPeXTracking`
 - `UIBackgroundModes` → `location`
 - `ITSAppUsesNonExemptEncryption` → `false`
 
