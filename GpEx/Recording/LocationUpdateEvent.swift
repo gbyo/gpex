@@ -29,6 +29,7 @@ nonisolated struct LocationUpdateEvent: Sendable, Equatable {
 
     init(sample: LocationSample?) {
         self.sample = sample
+        self.stationary = sample?.stationary ?? false
     }
 
     init(_ update: CLLocationUpdate) {

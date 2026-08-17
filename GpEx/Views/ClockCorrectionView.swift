@@ -40,11 +40,16 @@ struct ClockCorrectionView: View {
             }
 
             Section {
-                LabeledContent("Correction", value: correction.summary)
+                LabeledContent("Correction") {
+                    Text(correction.summary)
+                        .accessibilityIdentifier("correctionSummary")
+                }
                 LabeledContent("Export adjustment") {
                     Text(correction.signedAdjustment)
                         .monospacedDigit()
+                        .accessibilityIdentifier("signedExportAdjustment")
                         .accessibilityLabel(correction.spokenAdjustment)
+                        .accessibilityValue(correction.signedAdjustment)
                 }
                 .accessibilityIdentifier("exportAdjustment")
             } footer: {

@@ -110,13 +110,19 @@ final class GpExUITests: XCTestCase {
         let increment = seconds.buttons.element(boundBy: 1)
         for _ in 0..<5 { increment.tap() }
 
-        XCTAssertTrue(app.staticTexts["Camera was 5 seconds slow"].waitForExistence(timeout: 10))
+        let summary = app.staticTexts["correctionSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains("Camera was 5 seconds slow"), summary.debugDescription)
         // The sign has to be unmistakable.
-        XCTAssertTrue(app.staticTexts["−00:00:05"].exists)
+        let adjustment = app.staticTexts["exportAdjustment"]
+        XCTAssertTrue(adjustment.waitForExistence(timeout: 10))
+        XCTAssertEqual(adjustment.value as? String, "−00:00:05")
 
         // And it is still there after going back, meaning it was saved.
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.staticTexts["Camera was 5 seconds slow"].waitForExistence(timeout: 10))
+        let savedRow = app.buttons["cameraClockCorrection"]
+        XCTAssertTrue(savedRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(savedRow.label.contains("Camera was 5 seconds slow"), savedRow.debugDescription)
     }
 
     @MainActor

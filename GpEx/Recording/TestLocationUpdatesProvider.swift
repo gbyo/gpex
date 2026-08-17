@@ -49,7 +49,7 @@ nonisolated final class TestLocationUpdatesProvider: LocationUpdatesProvider {
                 $0.liveUpdateStreamsCreated += 1
             }
             guard !script.isEmpty else { return }
-            let script = script
+            let script = rebasedScript()
             let task = Task {
                 for step in script {
                     try? await Task.sleep(for: step.delay)
@@ -58,6 +58,26 @@ nonisolated final class TestLocationUpdatesProvider: LocationUpdatesProvider {
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// UI tests can spend several seconds waiting for the app to launch before they
+    /// tap Start. Rebase scripted timestamps when the stream starts so the harness
+    /// models fresh Core Location deliveries instead of cached, stale fixes.
+    private func rebasedScript() -> [ScriptedLocationEvent] {
+        guard let firstTimestamp = script.compactMap({ $0.event.sample?.timestamp }).min() else {
+            return script
+        }
+        let deliveryStart = Date()
+        return script.map { step in
+            var event = step.event
+            if var sample = event.sample {
+                sample.timestamp = deliveryStart.addingTimeInterval(
+                    sample.timestamp.timeIntervalSince(firstTimestamp)
+                )
+                event.sample = sample
+            }
+            return ScriptedLocationEvent(after: step.delay, event)
         }
     }
 
