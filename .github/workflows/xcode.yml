@@ -6,18 +6,29 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Build and test GpEx
-    runs-on: macos-latest
+    # Pinned rather than macos-latest so a runner-image rollover cannot silently
+    # change the toolchain under the tests.
+    runs-on: macos-26
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # xcodebuild test runs project code; it must not inherit a token that
+          # can write back to the repository.
+          persist-credentials: false
 
       - name: Show Xcode version
         run: xcodebuild -version
 
+      # OS=latest resolves against the pinned runner image above, so the runtime is
+      # determined by the image rather than by whatever Apple shipped most recently.
       - name: Build and test
         run: |
           xcodebuild \

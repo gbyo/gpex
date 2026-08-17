@@ -121,7 +121,7 @@ Stores:
 
 Indexes exist on `sessionID`, `timestamp`, and `(sessionID, timestamp)`.
 
-Optional values are `nil` when Core Location reports the corresponding value as invalid. Altitude is stored only with valid vertical accuracy; speed and course are stored only when their own accuracy values are non-negative.
+Optional values are `nil` when Core Location reports the corresponding value as invalid. Altitude is stored only with valid vertical accuracy; speed is stored only when both `location.speed` and `location.speedAccuracy` are non-negative, and course is stored only when both `location.course` and `location.courseAccuracy` are non-negative.
 
 Only raw observations are persisted. GPX bridge points and session start/end anchors are generated during export and never written back to the database. This keeps the original observations intact if the export algorithm changes later.
 
@@ -220,7 +220,7 @@ Views                       RootView, HomeView, ActiveRecordingView,
                             ClockCorrectionView
 ```
 
-Everything user-visible runs on the main actor. Location updates are infrequent enough that adding a second isolation domain would add coordination complexity without a meaningful benefit for this app.
+Everything user-visible runs on the main actor. The only other isolation domain is `TrackStore`'s `@ModelActor`, which exists because SwiftData requires it. Location processing deliberately does not get its own actor: updates are infrequent enough that moving them off the main actor would add coordination complexity without a meaningful benefit for this app.
 
 ## Info.plist and capabilities
 
