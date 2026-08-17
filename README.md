@@ -1,4 +1,4 @@
-# PhotoTrack (working name: GpEx)
+# GPeX
 
 A GPS track recorder for photographers. Start a recording, pocket the phone, shoot the
 game, stop, export a `.gpx` file, and let Lightroom Classic assign coordinates to your
@@ -11,11 +11,11 @@ packages, no backend, no networking, no accounts, no analytics, no Photos access
   held at iOS 26.0 and no iOS 27-only APIs. If `xcode-select` points at the Command Line
   Tools, build with `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`.
 - **Before shipping:** `PRODUCT_BUNDLE_IDENTIFIER` is the placeholder
-  `com.example.PhotoTrack`. Change it and set a development team.
+  `com.example.GPeX`. Change it and set a development team.
 
 ## 1. What it does
 
-1. Open PhotoTrack, tap **Start Recording**, grant location access.
+1. Open GPeX, tap **Start Recording**, grant location access.
 2. Lock the phone and put it away. Shoot. Move position occasionally.
 3. Tap **Stop**. Optionally enter a camera clock correction.
 4. **Export GPX** and share it to your Mac.
@@ -32,7 +32,7 @@ resumes by itself when the device moves — and reports what it is doing through
 `stationary`, `accuracyLimited`, `locationUnavailable`, `insufficientlyInUse` and
 authorization flags on each update.
 
-So PhotoTrack does not poll. There is no `Timer`, no repeated `requestLocation()`, no
+So GPeX does not poll. There is no `Timer`, no repeated `requestLocation()`, no
 `startUpdatingLocation()`, no significant-location-change or visit monitoring, no
 geofences, no `BGTaskScheduler`, and no Core Motion. Relying on Core Location's own power
 management is both less code and better battery life than trying to outsmart it.
@@ -60,11 +60,11 @@ end of the field — which is exactly the update we care most about.
 The authorization model is **When In Use + temporary full accuracy + a background
 activity session**. Always authorization is never requested.
 
-PhotoTrack also never calls `requestWhenInUseAuthorization()`. Instead it creates and
+GPeX also never calls `requestWhenInUseAuthorization()`. Instead it creates and
 retains:
 
 ```swift
-CLServiceSession(authorization: .whenInUse, fullAccuracyPurposeKey: "PhotoTracking")
+CLServiceSession(authorization: .whenInUse, fullAccuracyPurposeKey: "GPeXTracking")
 ```
 
 Creating that session is what prompts the user, and its `diagnostics` sequence is what
@@ -75,7 +75,7 @@ and not otherwise.
 Reduced accuracy is not treated as a failure. Recording continues and the UI says
 **Reduced Accuracy — Precise Location is off. Photo positioning may be inaccurate.**
 
-`CLRequireExplicitServiceSession` is deliberately *not* set in Info.plist. PhotoTrack
+`CLRequireExplicitServiceSession` is deliberately *not* set in Info.plist. GPeX
 always creates a service session before consuming updates, so the key would change
 nothing about its behaviour, and the `serviceSessionRequired` diagnostic is handled
 either way.
@@ -115,7 +115,7 @@ Start and restore are both idempotent. `ActiveRecording` owns the single set of 
 tasks, and `beginStreams` refuses to start a second one — so one recording can never have
 two concurrent live-update tasks.
 
-**Force-quit is not background recording.** PhotoTrack does not claim otherwise. If the
+**Force-quit is not background recording.** GPeX does not claim otherwise. If the
 user force-quits and later reopens the app with a marker still present, the recording is
 restored and continues, and the gap in the data is left as a gap. No coordinates are
 fabricated to hide it.
@@ -251,7 +251,7 @@ iPhone.
    smooth line between standing positions.
 
 To read the log while it is running, use Console.app filtered to subsystem
-`com.example.PhotoTrack` (categories `recording`, `lifecycle`, `persistence`, `export`).
+`com.example.GPeX` (categories `recording`, `lifecycle`, `persistence`, `export`).
 **Coordinates are never logged in release builds**; the only coordinate-aware helper is
 compiled out and marks its values `.private` even in debug.
 
@@ -260,7 +260,7 @@ then reopen it. The recording should resume into the same session with the gap i
 
 ## 10. Importing the GPX into Lightroom Classic
 
-1. Export the GPX from PhotoTrack and share it to the Mac (AirDrop or Save to Files).
+1. Export the GPX from GPeX and share it to the Mac (AirDrop or Save to Files).
 2. In Lightroom Classic, open the **Map** module.
 3. Load the GPX tracklog.
 4. Select the photos from that session.
@@ -278,7 +278,7 @@ to fix — and the Camera Clock screen is how to measure it.
 ## Architecture
 
 ```
-GpExApp / AppDelegate       @UIApplicationDelegateAdaptor; restores on launch
+GPeXApp / AppDelegate       @UIApplicationDelegateAdaptor; restores on launch
 AppServices                 composition root
 
 RecordingCoordinator        @MainActor @Observable; owns the state machine,
@@ -309,7 +309,7 @@ streams to exist at once.
 ## Info.plist and capabilities
 
 - `NSLocationWhenInUseUsageDescription`
-- `NSLocationTemporaryUsageDescriptionDictionary` → `PhotoTracking`
+- `NSLocationTemporaryUsageDescriptionDictionary` → `GPeXTracking`
 - `UIBackgroundModes` → `location`
 - `ITSAppUsesNonExemptEncryption` → `false`
 
@@ -320,16 +320,16 @@ entitlements file, no network capability, no App Group, no CloudKit.
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-xcodebuild -project GpEx.xcodeproj -scheme GpEx \
+xcodebuild -project GPeX.xcodeproj -scheme GPeX \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
-`GpExTests` is Swift Testing and covers the GPX document, the stationary bridge, session
+`GPeXTests` is Swift Testing and covers the GPX document, the stationary bridge, session
 anchors, camera clock corrections, accuracy handling, filename sanitisation, raw point
 acceptance, the store, and recording state management — including that two sessions cannot
 start, that restore happens once, that stop is idempotent, and that stationary does not
-release the background session. `GpExUITests` is a small XCUITest suite driven by a
-`-GpExUITesting` launch argument that swaps in scripted locations and an in-memory store,
+release the background session. `GPeXUITests` is a small XCUITest suite driven by a
+`-GPeXUITesting` launch argument that swaps in scripted locations and an in-memory store,
 so it never depends on GPS or the system permission alert.
 
 ## Privacy
