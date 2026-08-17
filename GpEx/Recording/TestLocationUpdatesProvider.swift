@@ -85,7 +85,9 @@ nonisolated final class TestLocationUpdatesProvider: LocationUpdatesProvider {
     }
 
     func emit(_ sample: LocationSample) {
-        emit(LocationUpdateEvent(sample: sample))
+        var event = LocationUpdateEvent(sample: sample)
+        event.stationary = sample.stationary
+        emit(event)
     }
 
     /// Emits a stationary report that carries no coordinate, the way Core Location
