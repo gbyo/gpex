@@ -10,7 +10,7 @@ struct SessionDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var summary: SessionSummary = .empty
-    @State private var exportURL: URL?
+    @State private var exportItem: GPXExportItem?
     @State private var exportProblem: String?
     @State private var editedName = ""
     @State private var isConfirmingDelete = false
@@ -129,8 +129,19 @@ struct SessionDetailView: View {
 
     @ViewBuilder
     private var exportRow: some View {
-        if let exportURL {
-            ShareLink(item: exportURL) {
+        if let exportItem {
+            // The item is `Transferable`, so the system decides what a `.gpx` means to
+            // each destination — a file to AirDrop and Files, an attachment to Mail —
+            // instead of GPeX handing everyone the same temporary URL.
+            ShareLink(
+                item: exportItem,
+                // The filename is the useful thing to show: it is what the file will be
+                // called wherever it lands.
+                preview: SharePreview(
+                    exportItem.filename,
+                    image: Image(systemName: "doc.text")
+                )
+            ) {
                 Label("Export GPX", systemImage: "square.and.arrow.up")
             }
             .accessibilityIdentifier("exportGPX")
@@ -163,8 +174,15 @@ struct SessionDetailView: View {
         Task { try? await trackStore.rename(sessionID: sessionID, to: trimmed) }
     }
 
+    /// Builds the exact bytes that will be shared, ahead of the tap.
+    ///
+    /// Nothing is written to disk here: the document only becomes a file inside
+    /// `GPXExportItem`'s transfer representation, at the moment the system asks for
+    /// one. What this does is find out early whether there is anything exportable, so
+    /// the row can say "no usable locations" instead of failing after the share sheet
+    /// is already open.
     private func prepareExport() async {
-        exportURL = nil
+        exportItem = nil
         exportProblem = nil
         do {
             guard let input = try await trackStore.exportInput(sessionID: sessionID) else {
@@ -172,8 +190,10 @@ struct SessionDetailView: View {
                 return
             }
             let xml = try GPXExporter().gpx(session: input.session, samples: input.samples)
-            let filename = GPXExporter.filename(for: input.session)
-            exportURL = try GPXTemporaryFile.write(xml, filename: filename)
+            exportItem = GPXExportItem(
+                filename: GPXExporter.filename(for: input.session),
+                xml: xml
+            )
         } catch GPXExportError.noUsableLocations {
             exportProblem = "No usable locations were recorded, so there is nothing to export."
         } catch {

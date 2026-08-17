@@ -29,9 +29,7 @@ struct HomeView: View {
             }
 
             Section {
-                NavigationLink {
-                    CameraClockView()
-                } label: {
+                NavigationLink(value: AppRouter.Destination.cameraClock) {
                     Label("Camera Clock", systemImage: "clock")
                 }
                 .accessibilityIdentifier("cameraClock")
@@ -40,7 +38,7 @@ struct HomeView: View {
             if !sessions.isEmpty {
                 Section("Recent") {
                     ForEach(sessions.prefix(20)) { session in
-                        NavigationLink(value: session.id) {
+                        NavigationLink(value: AppRouter.Destination.session(session.id)) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(session.name)
                                 Text(

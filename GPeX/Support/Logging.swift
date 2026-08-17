@@ -16,6 +16,9 @@ nonisolated enum Log {
     static let persistence = Logger(subsystem: subsystem, category: "persistence")
     /// GPX generation and sharing.
     static let export = Logger(subsystem: subsystem, category: "export")
+    /// MetricKit reports and recording performance state. Never carries coordinates,
+    /// session names or session identifiers.
+    static let metrics = Logger(subsystem: subsystem, category: "metrics")
 }
 
 extension Logger {

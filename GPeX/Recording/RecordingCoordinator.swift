@@ -26,6 +26,10 @@ final class RecordingCoordinator {
     /// non-throwing: a Live Activity that is disabled, dismissed or broken changes no
     /// recording behaviour at all.
     private let liveActivity: RecordingLiveActivityManager?
+    /// Describes the recording's state to the system. Observational only: it is
+    /// non-throwing and its result is never consulted, so nothing it does can change
+    /// what a recording does.
+    private let performanceReporter: any RecordingPerformanceReporting
     private let now: () -> Date
     /// Whether this process should rejoin an outstanding recording on launch. Decided by
     /// the composition root, so a unit-test host never resurrects a recording behind a
@@ -43,6 +47,7 @@ final class RecordingCoordinator {
         provider: any LocationUpdatesProvider,
         liveActivity: RecordingLiveActivityManager? = nil,
         allowsRestore: Bool = true,
+        performanceReporter: any RecordingPerformanceReporting = NoOpRecordingPerformanceReporter(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.trackStore = trackStore
@@ -50,6 +55,7 @@ final class RecordingCoordinator {
         self.provider = provider
         self.liveActivity = liveActivity
         self.allowsRestore = allowsRestore
+        self.performanceReporter = performanceReporter
         self.now = now
     }
 
@@ -91,7 +97,7 @@ final class RecordingCoordinator {
             startedAt: startedAt,
             handles: provider.beginSessions()
         )
-        state = .starting(active, .waitingForAuthorization)
+        setState(.starting(active, .waitingForAuthorization))
         Log.recording.notice("Started recording \(sessionID, privacy: .public)")
 
         // A user-initiated start is the only thing that creates a Live Activity.
@@ -139,7 +145,7 @@ final class RecordingCoordinator {
             startedAt: marker.startedAt,
             handles: provider.beginSessions()
         )
-        state = .starting(active, .acquiringLocation)
+        setState(.starting(active, .acquiringLocation))
 
         active.sessionPreparation = Task { [trackStore] in
             try await trackStore.requireOpenSession(id: marker.sessionID)
@@ -199,7 +205,7 @@ final class RecordingCoordinator {
     func stopRecording() async {
         guard let active = state.activeRecording, !state.isStopping else { return }
         let endedAt = now()
-        state = .stopping(active)
+        setState(.stopping(active))
 
         // The recording has entered its stopping path, so saying so is now true. The
         // activity is not ended here — that happens once the shutdown has completed.
@@ -223,7 +229,7 @@ final class RecordingCoordinator {
 
         markerStore.clear()
         lastFinishedSessionID = active.sessionID
-        state = .idle
+        setState(.idle)
         Log.recording.notice("Stopped recording \(active.sessionID, privacy: .public)")
 
         // Last, after the recording is completely shut down and the state is already
@@ -238,7 +244,7 @@ final class RecordingCoordinator {
 
     /// Dismisses a failure so the home screen can offer Start again.
     func dismissFailure() {
-        if case .failed = state { state = .idle }
+        if case .failed = state { setState(.idle) }
     }
 
     // MARK: - Streams
@@ -456,7 +462,7 @@ final class RecordingCoordinator {
 
         markerStore.clear()
         guard isCurrent(active), !state.isStopping else { return }
-        state = .failed(problem)
+        setState(.failed(problem))
 
         // A recording the app has definitively ended must not leave a Live Activity
         // claiming otherwise. Note the direction: recording failures end activities,
@@ -469,7 +475,7 @@ final class RecordingCoordinator {
         guard isCurrent(active) else { return }
         active.tearDown()
         markerStore.clear()
-        state = problem.map { RecordingState.failed($0) } ?? .idle
+        setState(problem.map { RecordingState.failed($0) } ?? .idle)
         await liveActivity?.end()
     }
 
@@ -504,6 +510,24 @@ final class RecordingCoordinator {
 
     // MARK: - State helpers
 
+    /// The only place `state` is written.
+    ///
+    /// Every transition — start, restore, diagnostics, activity updates, stop, failure
+    /// and recovery — funnels through here, which is what makes a single
+    /// `performanceReporter.transition(to:)` call sufficient. Reporting from each of
+    /// those call sites instead would mean seven places to keep in step, and would
+    /// scatter framework concerns through the state machine.
+    ///
+    /// The phase comparison is what stops redundant reports: several code paths
+    /// re-assert the state they are already in, and none of those are transitions.
+    private func setState(_ newState: RecordingState) {
+        let previousPhase = state.phase
+        state = newState
+        let newPhase = newState.phase
+        guard newPhase != previousPhase else { return }
+        performanceReporter.transition(to: newPhase)
+    }
+
     private func isCurrent(_ active: ActiveRecording) -> Bool {
         state.activeRecording === active
     }
@@ -512,13 +536,13 @@ final class RecordingCoordinator {
         guard isCurrent(active) else { return }
         if case .starting(_, let current) = state, current == startupPhase { return }
         guard case .starting = state else { return }
-        state = .starting(active, startupPhase)
+        setState(.starting(active, startupPhase))
     }
 
     private func setActivity(_ activity: RecordingActivity, for active: ActiveRecording) {
         guard isCurrent(active), !state.isStopping else { return }
         if case .recording(_, let current) = state, current == activity { return }
-        state = .recording(active, activity)
+        setState(.recording(active, activity))
     }
 
     // MARK: - Naming

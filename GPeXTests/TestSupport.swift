@@ -73,6 +73,40 @@ final class MutableClock {
     func advance(_ seconds: TimeInterval) { now = now.addingTimeInterval(seconds) }
 }
 
+/// Records every phase the coordinator reports, so tests can assert on the sequence
+/// rather than on a framework GPeX cannot observe.
+@MainActor
+final class SpyPerformanceReporter: RecordingPerformanceReporting {
+    private(set) var reportedPhases: [RecordingPhase] = []
+
+    /// The state labels actually handed to StateReporting, in order.
+    var reportedLabels: [String?] { reportedPhases.map(\.performanceStateLabel) }
+
+    func transition(to phase: RecordingPhase) {
+        reportedPhases.append(phase)
+    }
+}
+
+/// A reporter whose every call goes wrong.
+///
+/// Stands in for MetricKit or StateReporting misbehaving on a device. The protocol
+/// cannot throw, so this is what a broken implementation actually looks like from the
+/// coordinator's side: it swallows its own failure and keeps count.
+@MainActor
+final class FailingPerformanceReporter: RecordingPerformanceReporting {
+    private(set) var swallowedFailures = 0
+
+    private struct ReportingFailure: Error {}
+
+    func transition(to phase: RecordingPhase) {
+        do {
+            throw ReportingFailure()
+        } catch {
+            swallowedFailures += 1
+        }
+    }
+}
+
 /// Everything needed to drive a `RecordingCoordinator` with no Core Location.
 @MainActor
 struct RecordingHarness {
@@ -83,8 +117,17 @@ struct RecordingHarness {
     let defaults: UserDefaults
     let clock: MutableClock
     let coordinator: RecordingCoordinator
+    let router: AppRouter
+    let performanceReporter: any RecordingPerformanceReporting
 
-    init(allowsRestore: Bool = true, liveActivity: RecordingLiveActivityManager? = nil) throws {
+    /// The spy, when the harness was built with the default reporter.
+    var performanceSpy: SpyPerformanceReporter? { performanceReporter as? SpyPerformanceReporter }
+
+    init(
+        allowsRestore: Bool = true,
+        liveActivity: RecordingLiveActivityManager? = nil,
+        performanceReporter: any RecordingPerformanceReporting = SpyPerformanceReporter()
+    ) throws {
         let (store, container) = try makeTrackStore()
         self.container = container
         self.store = store
@@ -99,14 +142,22 @@ struct RecordingHarness {
 
         let clock = MutableClock()
         self.clock = clock
+        self.router = AppRouter()
+        self.performanceReporter = performanceReporter
         self.coordinator = RecordingCoordinator(
             trackStore: store,
             markerStore: markerStore,
             provider: provider,
             liveActivity: liveActivity,
             allowsRestore: allowsRestore,
+            performanceReporter: performanceReporter,
             now: { clock.now }
         )
+    }
+
+    /// The production intent surface, wired to this harness's real objects.
+    var intentActions: AppIntentActions {
+        AppIntentActions(coordinator: coordinator, router: router)
     }
 }
 

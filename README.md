@@ -25,6 +25,7 @@ GPeX focuses on recording useful location and timestamp data. It does not includ
 * GPX 1.1 export
 * Camera clock correction down to the second
 * Camera Clock screen for measuring camera time drift
+* Siri and Shortcuts phrases for starting a recording and opening the Camera Clock
 * Recording recovery after the app is relaunched
 * Local-only storage
 * No account or backend
@@ -68,9 +69,13 @@ If every photo appears shifted by roughly the same amount of time, check the cam
 * iOS 26.0 or later
 * Xcode 27.0 beta or later for the current project
 
-GPeX is written with SwiftUI, SwiftData, Core Location, and Swift Testing.
+GPeX is written with SwiftUI, SwiftData, Core Location, App Intents, MetricKit, and
+Swift Testing.
 
-The deployment target remains iOS 26.0 and the project does not currently depend on iOS 27-only APIs.
+The deployment target remains iOS 26.0. The two iOS 27-only APIs GPeX uses —
+`MetricManager` and StateReporting — sit behind `if #available(iOS 27, *)`, with a
+working iOS 26 path in both cases. `StateReporting.framework` is weak-linked, so the app
+launches normally on iOS 26.
 
 ## Building
 
@@ -106,6 +111,8 @@ There is:
 * no networking
 * no account
 * no analytics
+* no telemetry upload — MetricKit reports are summarised to the device log and, at most,
+  a handful are kept locally in Caches; none of them contain coordinates or session names
 * no advertising SDK
 * no CloudKit
 * no Photos access

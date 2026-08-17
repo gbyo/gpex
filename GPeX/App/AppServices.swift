@@ -1,3 +1,4 @@
+import AppIntents
 import Foundation
 import SwiftData
 import OSLog
@@ -13,11 +14,20 @@ final class AppServices {
     let modelContainer: ModelContainer
     let trackStore: TrackStore
     let coordinator: RecordingCoordinator
+    /// Navigation the app can be told to perform from outside the view hierarchy.
+    let router: AppRouter
+    /// The process's one performance-monitoring service. Owned here so there is
+    /// exactly one, and started once from the app delegate.
+    let performanceMonitor: PerformanceMonitor
+    /// The only surface App Intents touch.
+    let intentActions: any GPeXIntentActions
 
     private init() {
         let mode = AppLaunchMode.current
         modelContainer = Self.makeContainer(onDisk: mode.usesOnDiskStore)
         trackStore = TrackStore(modelContainer: modelContainer)
+        router = AppRouter()
+        performanceMonitor = PerformanceMonitor()
 
         let provider: any LocationUpdatesProvider = mode.usesCoreLocation
             ? CoreLocationUpdatesProvider()
@@ -31,12 +41,25 @@ final class AppServices {
             provider: provider,
             // The one place ActivityKit is attached to the recording engine.
             liveActivity: RecordingLiveActivityManager(),
-            allowsRestore: mode.restoresInterruptedRecording
+            allowsRestore: mode.restoresInterruptedRecording,
+            performanceReporter: RecordingPerformanceReporterFactory.make()
         )
+
+        intentActions = AppIntentActions(coordinator: coordinator, router: router)
 
         if mode.seedsFixtureData {
             seedFixtureSession()
         }
+    }
+
+    /// Publishes the intent dependency and begins performance monitoring.
+    ///
+    /// Separate from `init` because both are process-wide registrations rather than
+    /// object construction, and because the app delegate is the one place that knows
+    /// the process has actually finished launching.
+    func startProcessServices() {
+        AppDependencyManager.shared.add(dependency: self.intentActions)
+        performanceMonitor.start()
     }
 
     private static func makeContainer(onDisk: Bool) -> ModelContainer {

@@ -9,7 +9,11 @@ struct GPeXApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(coordinator: services.coordinator, trackStore: services.trackStore)
+            RootView(
+                coordinator: services.coordinator,
+                trackStore: services.trackStore,
+                router: services.router
+            )
         }
         .modelContainer(services.modelContainer)
     }
