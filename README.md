@@ -21,6 +21,7 @@ GPeX focuses on recording useful location and timestamp data. It does not includ
 
 * Background GPS recording
 * Designed for long stationary periods with occasional movement
+* Lock Screen and Dynamic Island Live Activity, so you can check the recording without unlocking
 * GPX 1.1 export
 * Camera clock correction down to the second
 * Camera Clock screen for measuring camera time drift
@@ -111,6 +112,8 @@ There is:
 * no reverse geocoding
 
 Nothing leaves the device unless you explicitly export and share a GPX file.
+
+The Live Activity does not publish coordinates either. A Lock Screen is readable by anyone holding the phone, so it shows only that GPeX is recording, how long for, whether you are moving or standing still, the current accuracy, and how many locations have been saved — never where you are standing.
 
 ## Documentation
 

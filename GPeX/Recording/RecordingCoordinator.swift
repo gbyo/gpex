@@ -20,6 +20,12 @@ final class RecordingCoordinator {
     private let trackStore: TrackStore
     private let markerStore: RecoveryMarkerStore
     private let provider: any LocationUpdatesProvider
+    /// The Lock Screen projection of this recording, if the app wired one up.
+    ///
+    /// Optional because nothing here depends on it. Every call into it is one-way and
+    /// non-throwing: a Live Activity that is disabled, dismissed or broken changes no
+    /// recording behaviour at all.
+    private let liveActivity: RecordingLiveActivityManager?
     private let now: () -> Date
     /// Whether this process should rejoin an outstanding recording on launch. Decided by
     /// the composition root, so a unit-test host never resurrects a recording behind a
@@ -35,12 +41,14 @@ final class RecordingCoordinator {
         trackStore: TrackStore,
         markerStore: RecoveryMarkerStore,
         provider: any LocationUpdatesProvider,
+        liveActivity: RecordingLiveActivityManager? = nil,
         allowsRestore: Bool = true,
         now: @escaping () -> Date = { Date() }
     ) {
         self.trackStore = trackStore
         self.markerStore = markerStore
         self.provider = provider
+        self.liveActivity = liveActivity
         self.allowsRestore = allowsRestore
         self.now = now
     }
@@ -85,6 +93,9 @@ final class RecordingCoordinator {
         )
         state = .starting(active, .waitingForAuthorization)
         Log.recording.notice("Started recording \(sessionID, privacy: .public)")
+
+        // A user-initiated start is the only thing that creates a Live Activity.
+        if let liveSnapshot { liveActivity?.start(liveSnapshot) }
 
         active.sessionPreparation = Task { [trackStore] in
             try await trackStore.createSession(id: sessionID, name: name, startedAt: startedAt)
@@ -135,7 +146,25 @@ final class RecordingCoordinator {
         }
         beginStreams(for: active)
 
+        // Secondary to everything above, and deliberately not allowed to create one: if
+        // Core Location relaunched GPeX in the background there may be no activity
+        // to rejoin, and that is not a recovery failure. The GPX track is authoritative.
+        if let liveSnapshot {
+            liveActivity?.reconcile(with: liveSnapshot, creatingIfMissing: false)
+        }
+
         Task { await completeRestore(active) }
+    }
+
+    /// Puts the Lock Screen projection back in step after the user brings GPeX to
+    /// the foreground.
+    ///
+    /// Recreates a missing activity — the user is looking at the app, so a Live Activity
+    /// they dismissed earlier, or one that was never created during a background
+    /// relaunch, can reasonably come back. Does nothing when no recording is running.
+    func reconcileLiveActivity() {
+        guard let liveSnapshot else { return }
+        liveActivity?.reconcile(with: liveSnapshot, creatingIfMissing: true)
     }
 
     private func completeRestore(_ active: ActiveRecording) async {
@@ -146,17 +175,21 @@ final class RecordingCoordinator {
             guard isCurrent(active) else { return }
             active.persistedPointCount = existing
             Log.lifecycle.notice("Rejoined recording with \(existing, privacy: .public) existing points")
+            // The count is resolved after the activity was reassociated, and the next
+            // location event may be a long stationary stretch away, so say so now rather
+            // than leaving a rejoined recording reading "0 locations" for an hour.
+            publishLiveActivity()
         } catch is CancellationError {
             // Stopped while restoring.
         } catch TrackStoreError.sessionAlreadyEnded {
             // Stop finished writing the end time but the process died before the marker
             // was cleared. Finish that cleanup instead of resurrecting the recording.
             Log.lifecycle.notice("Marker outlived a completed stop; clearing it")
-            abandon(active, problem: nil)
+            await abandon(active, problem: nil)
         } catch {
             // The marker points at a session that is no longer there. Do not invent one.
             Log.lifecycle.error("Could not rejoin recording: \(error.localizedDescription, privacy: .public)")
-            abandon(active, problem: .recoveredSessionMissing)
+            await abandon(active, problem: .recoveredSessionMissing)
         }
     }
 
@@ -167,6 +200,10 @@ final class RecordingCoordinator {
         guard let active = state.activeRecording, !state.isStopping else { return }
         let endedAt = now()
         state = .stopping(active)
+
+        // The recording has entered its stopping path, so saying so is now true. The
+        // activity is not ended here — that happens once the shutdown has completed.
+        publishLiveActivity()
 
         // Stop the flow of data before writing the end time, so no observation can be
         // persisted with a timestamp after the recording officially ended.
@@ -188,6 +225,11 @@ final class RecordingCoordinator {
         lastFinishedSessionID = active.sessionID
         state = .idle
         Log.recording.notice("Stopped recording \(active.sessionID, privacy: .public)")
+
+        // Last, after the recording is completely shut down and the state is already
+        // idle, so however long ActivityKit takes it cannot hold up a stop or block the
+        // next start.
+        await liveActivity?.end()
     }
 
     func clearLastFinishedSession() {
@@ -271,6 +313,7 @@ final class RecordingCoordinator {
 
         guard isCurrent(active) else { return }
         applyActivity(from: event, for: active)
+        publishLiveActivity()
     }
 
     private func handle(_ diagnostic: SessionDiagnostic, for active: ActiveRecording) async {
@@ -302,6 +345,8 @@ final class RecordingCoordinator {
         if diagnostic.serviceSessionRequired {
             Log.recording.error("Core Location wants an explicit service session")
         }
+
+        publishLiveActivity()
     }
 
     private func applyActivity(from event: LocationUpdateEvent, for active: ActiveRecording) {
@@ -347,7 +392,7 @@ final class RecordingCoordinator {
             // Stopped mid-write.
         } catch TrackStoreError.sessionNotFound {
             Log.recording.error("Session vanished; abandoning recording rather than writing orphans")
-            abandon(active, problem: .recoveredSessionMissing)
+            await abandon(active, problem: .recoveredSessionMissing)
         } catch {
             Log.recording.error("Could not persist fix: \(error.localizedDescription, privacy: .public)")
         }
@@ -412,14 +457,49 @@ final class RecordingCoordinator {
         markerStore.clear()
         guard isCurrent(active), !state.isStopping else { return }
         state = .failed(problem)
+
+        // A recording the app has definitively ended must not leave a Live Activity
+        // claiming otherwise. Note the direction: recording failures end activities,
+        // never the other way round.
+        await liveActivity?.end()
     }
 
     /// Drops a recording that turned out not to exist, without touching stored data.
-    private func abandon(_ active: ActiveRecording, problem: RecordingProblem?) {
+    private func abandon(_ active: ActiveRecording, problem: RecordingProblem?) async {
         guard isCurrent(active) else { return }
         active.tearDown()
         markerStore.clear()
         state = problem.map { RecordingState.failed($0) } ?? .idle
+        await liveActivity?.end()
+    }
+
+    // MARK: - Live Activity
+
+    /// The user-visible recording state, flattened for the Live Activity.
+    ///
+    /// Note what crosses this boundary: an id, a start date, a phase, an accuracy, a
+    /// count and a flag. No coordinates, no `ActiveRecording`, no Core Location objects.
+    private var liveSnapshot: RecordingLiveSnapshot? {
+        guard let active = state.activeRecording else { return nil }
+        return RecordingLiveSnapshot(
+            sessionID: active.sessionID,
+            startedAt: active.startedAt,
+            phase: state.phase,
+            horizontalAccuracy: active.latestSample?.horizontalAccuracy,
+            pointCount: active.persistedPointCount,
+            reducedAccuracy: active.fullAccuracyDenied
+        )
+    }
+
+    /// Offers the current snapshot to the Live Activity.
+    ///
+    /// Called after the two places where recording state can change — a live update and a
+    /// session diagnostic — rather than being sprinkled around. Cheap regardless of how
+    /// often it runs: the manager drops a snapshot that would not change what is shown,
+    /// and the elapsed timer is the system's business, not ours.
+    private func publishLiveActivity() {
+        guard let liveSnapshot else { return }
+        liveActivity?.update(liveSnapshot)
     }
 
     // MARK: - State helpers

@@ -84,7 +84,7 @@ struct RecordingHarness {
     let clock: MutableClock
     let coordinator: RecordingCoordinator
 
-    init(allowsRestore: Bool = true) throws {
+    init(allowsRestore: Bool = true, liveActivity: RecordingLiveActivityManager? = nil) throws {
         let (store, container) = try makeTrackStore()
         self.container = container
         self.store = store
@@ -103,6 +103,7 @@ struct RecordingHarness {
             trackStore: store,
             markerStore: markerStore,
             provider: provider,
+            liveActivity: liveActivity,
             allowsRestore: allowsRestore,
             now: { clock.now }
         )

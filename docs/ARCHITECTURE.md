@@ -215,12 +215,91 @@ TrackSession / TrackPoint   models; snapshots cross the actor boundary
 GPXExporter                 pure export transformation
 GPXTemporaryFile            temporary share file, purged at launch
 
+RecordingLiveSnapshot       flat value the coordinator hands the Live Activity
+RecordingLiveActivityManager  start / update / reconcile / end, nothing else
+RecordingActivityHost       the ActivityKit seam
+RecordingActivityAttributes   the only file shared with the widget extension
+
 Views                       RootView, HomeView, ActiveRecordingView,
                             SessionDetailView, CameraClockView,
                             ClockCorrectionView
 ```
 
 Everything user-visible runs on the main actor. Location updates are infrequent enough that adding a second isolation domain would add coordination complexity without a meaningful benefit for this app.
+
+## The Live Activity
+
+The Live Activity answers one question while the phone is locked and in a pocket: **is GPeX still recording correctly?** It is not a second application surface.
+
+```text
+● GPeX Recording                          1:42:18
+
+Stationary
+Saving battery
+Accuracy ±7 m                        38 locations
+```
+
+It is a **read-only projection** of the recording state described above. There is no second state machine, no timer, no background task, and no Core Location or SwiftData in the widget extension.
+
+### Why the timer is not an ActivityKit update
+
+`Text(timerInterval:pauseTime:countsDown:showsHours:)` is rendered and advanced *by the system* from the static `startedAt` in the activity attributes. No elapsed value is ever sent through ActivityKit, and nothing wakes the app to move a clock. A Live Activity that pushed a new content state every second would undo the power behaviour the rest of this document describes.
+
+ActivityKit hears from the app only when what is *displayed* changes — a status transition, a newly accepted fix that changes the shown accuracy, a new persisted point count, or reduced accuracy appearing. `RecordingLiveActivityManager` compares each candidate content state against the last one it sent and drops duplicates.
+
+`staleDate` is deliberately `nil`. Core Location goes quiet on purpose while the photographer stands still, sometimes for hours, so any stale date would routinely mark a healthy recording as stale during exactly the situation this app is built for.
+
+Two rendering details were found on a real Lock Screen rather than in a preview, and both are load-bearing:
+
+- **`timerInterval`, not `Text(_:style: .timer)`.** The style renders a coarse relative phrase — "1 minute" — where a multi-hour track needs `1:42:18`. The interval must also be finite; `Date.distantFuture` leaves the timer with no sane ideal width.
+- **No `.fixedSize()` on the timer.** A system-rendered timer's ideal width is wide enough that refusing to compress it overflows the row and the activity renders as an empty black capsule — silently, with `chronod` still logging a successful render.
+
+### Statuses
+
+Six presentation states, a lossy projection of `RecordingPhase` chosen for a two-second glance. Core Location vocabulary never reaches them.
+
+| `RecordingPhase` | Lock Screen |
+|---|---|
+| `waitingForAuthorization` | Waiting for Location Access |
+| `acquiringLocation` | Acquiring Location |
+| `moving` | Moving |
+| `stationary` | Stationary — *Saving battery* |
+| `temporarilyUnavailable` | Location Temporarily Unavailable |
+| `stopping` | Finishing Recording |
+| `idle`, `failed` | no activity — it is ended, not relabelled |
+
+**Stationary never says "Paused."** The recording is still running and resumes by itself, so calling it paused would invite the user to stop and restart — the one reaction that would actually lose data.
+
+### Privacy
+
+The content state has **nowhere to put a coordinate**: `status`, `horizontalAccuracy`, `pointCount`, `reducedAccuracy`, and nothing else. Accuracy is also *dropped* rather than shown stale whenever the status says no fix is current, because a radius from the last observation does not describe where the device is now.
+
+### Where it attaches
+
+One place: `RecordingCoordinator`. It builds a `RecordingLiveSnapshot` — id, start date, phase, accuracy, count, flag — and hands it over. The manager never sees an `ActiveRecording`, a `LocationSample` or a Core Location object, and dependencies point one way only. Nothing in `CoreLocationUpdatesProvider`, `TrackStore`, the views, `AppDelegate` or `GPXExporter` mentions ActivityKit.
+
+`@preconcurrency import ActivityKit` is confined to `RecordingActivityHost.swift`: `Activity` is not `Sendable` yet its `update`/`end` are `@concurrent`, so the framework's supported API cannot otherwise be called from an isolated context.
+
+### Failure only ever points one way
+
+Every call into the manager is one-way and non-throwing. Recording proceeds normally if Live Activities are disabled, if ActivityKit throws, if the user dismisses the activity, or if the extension is unavailable — the failure is logged and that is the end of it. Conversely, a recording that stops, fails or is abandoned **ends** its activity, immediately rather than leaving "Recording Complete" on the Lock Screen for hours. `end()` is idempotent, and Stop works normally when there is no activity at all.
+
+### Recovery
+
+Restoration order is unchanged, and the GPX track stays authoritative:
+
+1. rejoin the GPS recording exactly as described above;
+2. *then* look through `Activity<RecordingActivityAttributes>.activities`;
+3. adopt the one whose static `sessionID` matches — by id, never "the first one";
+4. update it to the restored state, and end any leftovers from other sessions.
+
+If Core Location relaunched the app in the background and no matching activity exists, none is created: recovery must not depend on ActivityKit. Once the user brings GPeX to the foreground with a recording still running, `reconcileLiveActivity()` recreates a missing one.
+
+One deliberate exception: if the user *swiped the activity away* while this process kept running, it is not pushed back. A dismissal is a decision, and re-adding the activity on every foreground would be obnoxious.
+
+### Interaction
+
+Tapping opens `gpex://recording`, which pops `RootView`'s navigation to the root; the root already shows the active recording whenever one is running, so this needs no routing machinery. There is deliberately **no Stop button**: ending a multi-hour track by brushing a Lock Screen control would be costly, and an App Intent that mutated recording state would open a second route into the state machine.
 
 ## Info.plist and capabilities
 
@@ -229,8 +308,14 @@ GPeX uses:
 - `NSLocationWhenInUseUsageDescription`
 - `NSLocationTemporaryUsageDescriptionDictionary` → `GPeXTracking`
 - `UIBackgroundModes` → `location`
+- `NSSupportsLiveActivities` → `true`
+- `CFBundleURLTypes` → scheme `gpex`, the Live Activity's tap target
 - `ITSAppUsesNonExemptEncryption` → `false`
 
 There is no `NSLocationAlwaysAndWhenInUseUsageDescription` because Always authorization is never requested.
 
-The project has no networking capability, App Group, CloudKit dependency, or third-party package requirement.
+There is deliberately **no `NSSupportsLiveActivitiesFrequentUpdates`**. GPeX does not use ActivityKit push notifications and has no business asking for a frequent-update budget — it requests with `pushType: nil` and updates only when the displayed state changes.
+
+The extension's own Info.plist (`Config/GPeXLiveActivity-Info.plist`) contains only `NSExtension` → `NSExtensionPointIdentifier` → `com.apple.widgetkit-extension`.
+
+The project has no networking capability, App Group, CloudKit dependency, or third-party package requirement. Adding ActivityKit added no network capability, no push capability, no APNs, and no backend.
