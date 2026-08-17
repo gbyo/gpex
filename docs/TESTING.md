@@ -6,7 +6,7 @@ For project setup and basic usage, see the [README](../README.md). For implement
 
 ## Automated tests
 
-`GpExTests` uses Swift Testing and covers:
+`GPeXTests` uses Swift Testing and covers:
 
 - GPX document generation
 - stationary bridge behavior
@@ -22,7 +22,7 @@ For project setup and basic usage, see the [README](../README.md). For implement
 - idempotent stop behavior
 - retaining the background activity session while stationary
 
-`GpExUITests` is a small XCUITest suite. The `-GpExUITesting` launch argument swaps in scripted locations and an in-memory store so UI tests do not depend on live GPS or the system location-permission prompt.
+`GPeXUITests` is a small XCUITest suite. The `-GPeXUITesting` launch argument swaps in scripted locations and an in-memory store so UI tests do not depend on live GPS or the system location-permission prompt.
 
 ## Running the test suite
 
@@ -30,7 +30,7 @@ With the Xcode beta toolchain selected explicitly:
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-xcodebuild -project GpEx.xcodeproj -scheme GpEx \
+xcodebuild -project GPeX.xcodeproj -scheme GPeX \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
@@ -84,7 +84,7 @@ For device testing, use Console.app and filter to the app's logging subsystem.
 The current placeholder bundle identifier is:
 
 ```text
-com.example.PhotoTrack
+com.example.GPeX
 ```
 
 Useful log categories are:

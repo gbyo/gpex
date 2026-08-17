@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Build and test GpEx
+    name: Build and test GPeX
     runs-on: macos-latest
 
     steps:
@@ -21,7 +21,7 @@ jobs:
       - name: Build and test
         run: |
           xcodebuild \
-            -project GpEx.xcodeproj \
-            -scheme GpEx \
+            -project GPeX.xcodeproj \
+            -scheme GPeX \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
             test
