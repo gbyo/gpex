@@ -110,18 +110,42 @@ final class GpExUITests: XCTestCase {
         let increment = seconds.buttons.element(boundBy: 1)
         for _ in 0..<5 { increment.tap() }
 
+        // The row exists from the moment the screen appears, so existence proves
+        // nothing about the taps. Wait for the text itself to catch up.
         let summary = app.staticTexts["correctionSummary"]
         XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        expectation(
+            for: NSPredicate(format: "label CONTAINS %@", "Camera was 5 seconds slow"),
+            evaluatedWith: summary
+        )
+        waitForExpectations(timeout: 10)
         XCTAssertTrue(summary.label.contains("Camera was 5 seconds slow"), summary.debugDescription)
+
         // The sign has to be unmistakable.
         let adjustment = app.staticTexts["exportAdjustment"]
         XCTAssertTrue(adjustment.waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value == %@", "−00:00:05"), evaluatedWith: adjustment)
+        waitForExpectations(timeout: 10)
         XCTAssertEqual(adjustment.value as? String, "−00:00:05")
 
-        // And it is still there after going back, meaning it was saved.
+        // And it survives a fresh read, meaning it was saved rather than just held in
+        // the detail view that is already on screen. Pop all the way to the list and
+        // reopen the session so the row comes from a new `@Query`. Relaunching would be
+        // a stronger check but is not available here: the UI-testing store is in memory
+        // and re-seeds its fixture on every launch.
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["cameraClockCorrection"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["PhotoTrack"].waitForExistence(timeout: 10))
+
+        openSeededSession(in: app)
         let savedRow = app.buttons["cameraClockCorrection"]
         XCTAssertTrue(savedRow.waitForExistence(timeout: 10))
+        expectation(
+            for: NSPredicate(format: "label CONTAINS %@", "Camera was 5 seconds slow"),
+            evaluatedWith: savedRow
+        )
+        waitForExpectations(timeout: 10)
         XCTAssertTrue(savedRow.label.contains("Camera was 5 seconds slow"), savedRow.debugDescription)
     }
 

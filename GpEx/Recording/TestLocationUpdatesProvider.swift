@@ -1,6 +1,14 @@
 import Foundation
 import Synchronization
 
+extension Duration {
+    /// Seconds as a `TimeInterval`, for arithmetic against `Date`.
+    nonisolated var timeInterval: TimeInterval {
+        let (seconds, attoseconds) = components
+        return TimeInterval(seconds) + TimeInterval(attoseconds) / 1e18
+    }
+}
+
 /// One scripted delivery: how long to wait, then what to emit.
 nonisolated struct ScriptedLocationEvent: Sendable {
     var delay: Duration
@@ -64,17 +72,20 @@ nonisolated final class TestLocationUpdatesProvider: LocationUpdatesProvider {
     /// UI tests can spend several seconds waiting for the app to launch before they
     /// tap Start. Rebase scripted timestamps when the stream starts so the harness
     /// models fresh Core Location deliveries instead of cached, stale fixes.
+    ///
+    /// Each sample is stamped with its own cumulative delivery time rather than its
+    /// original offset, because the two need not agree: a script whose samples are a
+    /// second apart but which delivers them 400ms apart would otherwise hand the app
+    /// timestamps from the future, which is not something Core Location ever does.
     private func rebasedScript() -> [ScriptedLocationEvent] {
-        guard let firstTimestamp = script.compactMap({ $0.event.sample?.timestamp }).min() else {
-            return script
-        }
+        guard script.contains(where: { $0.event.sample != nil }) else { return script }
         let deliveryStart = Date()
+        var elapsed: TimeInterval = 0
         return script.map { step in
+            elapsed += step.delay.timeInterval
             var event = step.event
             if var sample = event.sample {
-                sample.timestamp = deliveryStart.addingTimeInterval(
-                    sample.timestamp.timeIntervalSince(firstTimestamp)
-                )
+                sample.timestamp = deliveryStart.addingTimeInterval(elapsed)
                 event.sample = sample
             }
             return ScriptedLocationEvent(after: step.delay, event)
