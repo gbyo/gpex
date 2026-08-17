@@ -22,6 +22,14 @@ For project setup and basic usage, see the [README](../README.md). For implement
 - idempotent stop behavior
 - retaining the background activity session while stationary
 
+The Live Activity is covered by three further suites:
+
+- **content** — every status label, point counts, accuracy included when a fix is current, omitted when absent, and dropped rather than shown stale when it is not; reduced accuracy; and that the encoded payload contains no coordinate keys
+- **manager** — one activity per recording, identical content not re-sent, update ordering, idempotent ending, and reassociation by session UUID rather than by position
+- **integration with the coordinator** — a refusing or disabled ActivityKit does not stop recording, and stopping, failing or abandoning all end the activity
+
+The widget's own presentations are checked with `#Preview` blocks in `GPeXLiveActivity/RecordingLiveActivityWidget.swift`, covering the Lock Screen and all three Dynamic Island presentations for acquiring, moving, stationary, temporarily unavailable, and reduced accuracy.
+
 `GPeXUITests` is a small XCUITest suite. The `-GPeXUITesting` launch argument swaps in scripted locations and an in-memory store so UI tests do not depend on live GPS or the system location-permission prompt.
 
 ## Running the test suite
@@ -54,6 +62,21 @@ Use a real iPhone for this test.
 12. Inspect the GPX and confirm stationary periods produce step-like transitions rather than a smooth interpolated path between standing positions.
 
 The important behavior is that Core Location may stop delivering fixes while stationary, then resume when movement begins. GPeX should keep the background activity session alive across that stationary period so it remains eligible for the resumed update.
+
+## Live Activity test
+
+The same walk validates the Live Activity, on a Dynamic Island iPhone. This still needs a device: the simulator can show the Lock Screen presentation, but not the Dynamic Island, and not real movement transitions.
+
+1. With the phone locked, confirm the Lock Screen activity appears.
+2. Confirm the elapsed timer advances **while the app is not running**. It should keep counting through a long stationary stretch with no ActivityKit traffic at all — the `recording` log category will be silent.
+3. Stand still until Core Location reports stationary. Confirm the activity reads **Stationary — Saving battery**, not "Paused".
+4. Walk 30 to 50 meters. Confirm it returns to **Moving**, and that accuracy and the location count change only after real fixes arrive.
+5. Check the compact, minimal, and expanded Dynamic Island presentations.
+6. Leave it running for 30 to 60 minutes and compare battery and CPU against a build without the feature. Adding the Live Activity should not change them materially. If it does, something is sending updates it should not.
+7. Stop the recording from inside GPeX. The activity should disappear promptly.
+8. Export and confirm the GPX is unchanged.
+
+Also confirm the failure paths are inert: turn Live Activities off in Settings and record normally, and dismiss the activity mid-recording. Neither should affect the track.
 
 ## Restoration test
 

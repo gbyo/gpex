@@ -29,6 +29,8 @@ final class AppServices {
             trackStore: trackStore,
             markerStore: RecoveryMarkerStore(defaults: Self.makeDefaults(for: mode)),
             provider: provider,
+            // The one place ActivityKit is attached to the recording engine.
+            liveActivity: RecordingLiveActivityManager(),
             allowsRestore: mode.restoresInterruptedRecording
         )
 

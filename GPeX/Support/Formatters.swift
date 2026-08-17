@@ -28,16 +28,11 @@ nonisolated enum Formatters {
     }
 
     /// `±7 m`, localised to the reader's units.
+    ///
+    /// One implementation, in the file shared with the widget extension, so the recording
+    /// screen and the Lock Screen cannot disagree about how an accuracy reads.
     static func accuracy(_ meters: Double) -> String {
-        let measurement = Measurement<UnitLength>(value: meters.rounded(), unit: .meters)
-        let formatted = measurement.formatted(
-            .measurement(
-                width: .abbreviated,
-                usage: .general,
-                numberFormatStyle: .number.precision(.fractionLength(0))
-            )
-        )
-        return "±\(formatted)"
+        RecordingText.accuracy(meters)
     }
 
     /// `Aug 17, 2026`
