@@ -42,6 +42,24 @@ The live configuration is chosen in exactly one place —
 `.default` against `.fitness` by changing one line. It starts at `.default` and is
 deliberately not a user setting.
 
+What Core Location does *not* promise is a low delivery rate. While it still believes the
+device is moving, `.default` can deliver at roughly 1 Hz — including when a phone is
+sitting on a camera bag and the coordinate is only wandering inside its own accuracy
+circle. So PhotoTrack separates three things:
+
+* **raw events** — every delivery from the one live-update stream. All of them are
+  consumed: authorization, `stationary`, `locationUnavailable` and the other diagnostics
+  are knowable only from them.
+* **persisted observations** — the subset that adds information, chosen by
+  `LocationSamplePersistencePolicy` (§6a).
+* **Core Location's stationary suspension** — its own power management. Once it stops
+  delivering, PhotoTrack simply idles and waits for the stream to resume.
+
+Filtering points is not GPS throttling. Dropping a `TrackPoint` saves a SwiftData write,
+observable-state churn and GPX bulk; it does not change what the receiver is doing. The
+battery win comes from letting `.default` suspend itself, not from anything the app does
+to the hardware.
+
 ## 3. Why the background activity session stays alive while stationary
 
 `CLBackgroundActivitySession` is created when the user taps Start and is invalidated
@@ -145,6 +163,40 @@ to the export algorithm. `TrackPoint` has no relationship to `TrackSession`, so
 
 All SwiftData access goes through `TrackStore`, a `@ModelActor`. Nothing that crosses that
 boundary is a model object — only `Sendable` snapshots and `LocationSample` values.
+
+## 6a. Which observations get written down
+
+`RecordingCoordinator` consumes every event, then asks
+`LocationSamplePersistencePolicy` whether the fix it carries is worth a row. The policy is
+a pure function over the candidate and the last **persisted** sample — no timers, no
+tasks, no Core Location, no persistence — so its arithmetic is tested directly. Rejecting
+a fix never short-circuits the event: activity, diagnostics and stationary semantics are
+applied regardless, and `RecordingCoordinator.latestSample` continues to mean "latest
+persisted observation".
+
+A candidate is kept when it is any of:
+
+1. **the first fix** of the recording — startup behaviour is unchanged;
+2. **an explicit stationary transition** — semantic, never discarded for being close to
+   the previous coordinate, because the exporter's stationary bridge depends on it. A
+   stationary report carrying *no* coordinate still just marks the recent last-known
+   point stationary; nothing is invented;
+3. **the first fix after a stationary period** — retained promptly whatever the distance,
+   since a photographer may have moved only a few metres;
+4. **meaningfully displaced** — further from the last persisted point than a noise
+   envelope scaled by the worse of the two reported accuracies (0.75×) and clamped to
+   8–50 m, so the rule is neither `distance > 10` nor defeated by a 500 m fix;
+5. **materially more accurate** in the same place — at most half the previous accuracy
+   radius and at least 5 m better, so 40 m → 8 m is kept and 9 m → 8.5 m is not;
+6. **overdue** — a sparse safety observation once ~20 s have passed with nothing else
+   firing, so a long ambiguous pre-stationary stretch yields a few points a minute rather
+   than sixty, and never a silent hole.
+
+Every threshold lives in `LocationSamplePersistencePolicy.Configuration` with a comment
+on what it is for. They decide whether another observation *adds information* — not
+whether the phone physically moved, which at 8 m accuracy has no honest answer. Rule 6 is
+evaluated against the timestamps of events that are already arriving; nothing schedules,
+requests or manufactures a fix.
 
 ## 7. The GPX stationary-bridge algorithm
 
@@ -290,6 +342,8 @@ LocationUpdatesProvider     the Core Location seam
   CoreLocationUpdatesProvider / TestLocationUpdatesProvider
 LocationSample              Sendable value type; intrinsic validation
 LocationUpdateEvent         one flattened liveUpdates() delivery
+LocationSamplePersistencePolicy
+                            pure decision: is this fix worth a TrackPoint?
 RecoveryMarker(Store)       the UserDefaults lifecycle marker
 
 TrackStore                  @ModelActor; all SwiftData access
@@ -302,9 +356,9 @@ Views  RootView, HomeView, ActiveRecordingView, SessionDetailView,
        CameraClockView, ClockCorrectionView
 ```
 
-Everything user-visible runs on the main actor. Location updates arrive a few times a
-minute at most, so a second isolation domain would buy nothing and would add ways for two
-streams to exist at once.
+Everything user-visible runs on the main actor. Handling one update is a distance
+comparison and at most one hop to `TrackStore`, so a second isolation domain would buy
+nothing and would add ways for two streams to exist at once.
 
 ## Info.plist and capabilities
 

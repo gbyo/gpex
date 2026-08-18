@@ -84,8 +84,16 @@ nonisolated final class TestLocationUpdatesProvider: LocationUpdatesProvider {
         for continuation in continuations { continuation.yield(event) }
     }
 
+    /// Emits an update carrying one fix.
+    ///
+    /// The event's `stationary` flag mirrors the sample's, because that is the only
+    /// shape Core Location produces: `LocationUpdateEvent(_ update:)` reads both from
+    /// the same `update.stationary`. Without this a "stationary sample" would arrive on
+    /// an event claiming the device was moving, which never happens on a device.
     func emit(_ sample: LocationSample) {
-        emit(LocationUpdateEvent(sample: sample))
+        var event = LocationUpdateEvent(sample: sample)
+        event.stationary = sample.stationary
+        emit(event)
     }
 
     /// Emits a stationary report that carries no coordinate, the way Core Location

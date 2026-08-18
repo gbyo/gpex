@@ -5,10 +5,24 @@ import OSLog
 /// Owns the recording state machine, the retained Core Location sessions, and the
 /// tasks consuming live updates.
 ///
-/// Everything here runs on the main actor. Location updates arrive a few times a
-/// minute at most, so there is nothing to gain from another executor, and keeping one
-/// isolation domain removes every opportunity for two live-update streams to exist at
-/// once. Persistence hops to `TrackStore`, which has its own.
+/// Everything here runs on the main actor. Handling one update is a distance
+/// comparison and, at most, one hop to `TrackStore`, so there is nothing to gain from
+/// another executor, and keeping one isolation domain removes every opportunity for two
+/// live-update streams to exist at once.
+///
+/// Three distinct things are deliberately kept apart:
+/// * **raw Core Location events** — every delivery from the one live-update stream.
+///   All of them are consumed, because authorization, `stationary`,
+///   `locationUnavailable` and the other diagnostics are only knowable from them.
+/// * **persisted observations** — the subset that `LocationSamplePersistencePolicy`
+///   judges to add information. `.default` live updates can arrive at about 1 Hz while
+///   Core Location still believes the device is moving, and a phone sitting on a
+///   sideline produces a steady trickle of coordinates that differ only by GPS noise.
+/// * **Core Location's own stationary suspension** — once it decides the device is not
+///   moving it stops delivering and lets the process idle. PhotoTrack waits; it does
+///   not poll, restart the stream, or otherwise try to manage the GPS hardware.
+///   Filtering points saves SwiftData writes, observable churn and GPX bulk. It does
+///   not, and is not claimed to, reduce GPS power draw.
 @Observable
 final class RecordingCoordinator {
     /// A fix older than the recording start by more than this is treated as a cached
@@ -16,6 +30,9 @@ final class RecordingCoordinator {
     private static let clockJitterTolerance: TimeInterval = 5
     /// How recent a point must be for a location-less stationary report to apply to it.
     private static let stationaryBackfillWindow: TimeInterval = 120
+    /// Decides which valid fixes are worth persisting. Pure, stateless and tested on
+    /// its own; see `LocationSamplePersistencePolicy` for the thresholds.
+    private let persistencePolicy: LocationSamplePersistencePolicy
 
     private let trackStore: TrackStore
     private let markerStore: RecoveryMarkerStore
@@ -36,8 +53,10 @@ final class RecordingCoordinator {
         markerStore: RecoveryMarkerStore,
         provider: any LocationUpdatesProvider,
         allowsRestore: Bool = true,
+        persistencePolicy: LocationSamplePersistencePolicy = LocationSamplePersistencePolicy(),
         now: @escaping () -> Date = { Date() }
     ) {
+        self.persistencePolicy = persistencePolicy
         self.trackStore = trackStore
         self.markerStore = markerStore
         self.provider = provider
@@ -50,6 +69,9 @@ final class RecordingCoordinator {
     var phase: RecordingPhase { state.phase }
     var startedAt: Date? { state.activeRecording?.startedAt }
     var recordedPointCount: Int { state.activeRecording?.persistedPointCount ?? 0 }
+    /// The most recent *persisted* observation — not the most recent raw fix. Redundant
+    /// deliveries that the persistence policy dropped are intentionally not reflected
+    /// here, so this stays in step with what the track actually contains.
     var latestSample: LocationSample? { state.activeRecording?.latestSample }
     /// Precise Location is off for PhotoTrack while this recording runs.
     var isPreciseLocationDenied: Bool { state.activeRecording?.fullAccuracyDenied ?? false }
@@ -329,6 +351,11 @@ final class RecordingCoordinator {
 
     private func persist(_ sample: LocationSample, for active: ActiveRecording) async {
         guard let accepted = validate(sample, for: active) else { return }
+        // Consumed either way — only the write is skipped. The caller still applies the
+        // event's activity, diagnostics and stationary semantics.
+        guard let decision = persistencePolicy.decision(for: accepted, relativeTo: active.latestSample) else {
+            return
+        }
         do {
             // Wait for the row to exist. Cheap in practice, and it means a fix that
             // arrives before the session is written is neither dropped nor orphaned.
@@ -338,6 +365,7 @@ final class RecordingCoordinator {
             active.lastAcceptedTimestamp = accepted.timestamp
             active.latestSample = accepted
             active.persistedPointCount = total
+            Log.recording.debug("Persisted fix: \(String(describing: decision), privacy: .public)")
             Log.recording.logCoordinateForDebugging(
                 "persisted fix",
                 latitude: accepted.latitude,
@@ -378,10 +406,15 @@ final class RecordingCoordinator {
     private func recordStationaryAtLastKnownPosition(for active: ActiveRecording) async {
         let cutoff = now().addingTimeInterval(-Self.stationaryBackfillWindow)
         do {
-            _ = try await trackStore.markLatestPointStationary(
+            let marked = try await trackStore.markLatestPointStationary(
                 sessionID: active.sessionID,
                 notOlderThan: cutoff
             )
+            // Keep the in-memory last-persisted sample in step with the row that was
+            // just labelled, so the policy still recognises the next fix as a
+            // resumption from a stationary period.
+            guard isCurrent(active), marked else { return }
+            active.latestSample?.stationary = true
         } catch {
             Log.recording.error("Could not record stationary state: \(error.localizedDescription, privacy: .public)")
         }
