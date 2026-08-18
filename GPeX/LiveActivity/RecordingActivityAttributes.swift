@@ -22,7 +22,9 @@ import Foundation
 nonisolated enum RecordingLiveStatus: String, Codable, Hashable, Sendable, CaseIterable {
     case waitingForAuthorization
     case acquiringLocation
-    case moving
+    /// Ordinary running recording. Says what GPeX is doing, never what the photographer
+    /// is doing.
+    case tracking
     case stationary
     case temporarilyUnavailable
     case stopping
@@ -33,7 +35,7 @@ extension RecordingLiveStatus {
         switch self {
         case .waitingForAuthorization: "Waiting for Location Access"
         case .acquiringLocation: "Acquiring Location"
-        case .moving: "Moving"
+        case .tracking: "Recording"
         case .stationary: "Stationary"
         case .temporarilyUnavailable: "Location Temporarily Unavailable"
         case .stopping: "Finishing Recording"
@@ -43,12 +45,16 @@ extension RecordingLiveStatus {
     /// A quiet second line, where one earns its place.
     ///
     /// Never the word "Paused". A stationary recording is still running, and it resumes by
-    /// itself the moment the photographer walks — saying otherwise would invite them to
-    /// stop and restart, which is exactly the wrong reaction.
+    /// itself as soon as Core Location starts delivering again — saying otherwise would
+    /// invite the photographer to stop and restart, which is exactly the wrong reaction.
+    ///
+    /// Never the word "Moving" either. GPeX cannot see whether anyone is walking, so the
+    /// ordinary state says what it actually knows: locations are being tracked.
     var detail: String? {
         switch self {
+        case .tracking: "Tracking location"
         case .stationary: "Saving battery"
-        case .waitingForAuthorization, .acquiringLocation, .moving,
+        case .waitingForAuthorization, .acquiringLocation,
              .temporarilyUnavailable, .stopping: nil
         }
     }
@@ -58,7 +64,8 @@ extension RecordingLiveStatus {
         switch self {
         case .waitingForAuthorization: "lock.shield"
         case .acquiringLocation: "location.magnifyingglass"
-        case .moving: "figure.walk"
+        // Not `figure.walk`: a walking figure is a claim about the photographer.
+        case .tracking: "location.fill"
         case .stationary: "figure.stand"
         case .temporarilyUnavailable: "location.slash"
         case .stopping: "stop.circle"
@@ -72,7 +79,7 @@ extension RecordingLiveStatus {
     /// either case would overstate what GPeX knows.
     var showsAccuracy: Bool {
         switch self {
-        case .moving, .stationary: true
+        case .tracking, .stationary: true
         case .waitingForAuthorization, .acquiringLocation, .temporarilyUnavailable, .stopping: false
         }
     }

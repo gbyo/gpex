@@ -27,7 +27,7 @@ extension RecordingPhase {
         case .idle: nil
         case .waitingForAuthorization: "authorization"
         case .acquiringLocation: "acquiring"
-        case .moving: "moving"
+        case .tracking: "tracking"
         case .stationary: "stationary"
         case .temporarilyUnavailable: "unavailable"
         case .stopping: "stopping"

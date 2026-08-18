@@ -120,7 +120,7 @@ There is:
 
 Nothing leaves the device unless you explicitly export and share a GPX file.
 
-The Live Activity does not publish coordinates either. A Lock Screen is readable by anyone holding the phone, so it shows only that GPeX is recording, how long for, whether you are moving or standing still, the current accuracy, and how many locations have been saved — never where you are standing.
+The Live Activity does not publish coordinates either. A Lock Screen is readable by anyone holding the phone, so it shows only that GPeX is recording, how long for, whether it is tracking or Core Location has reported the device stationary, the current accuracy, and how many locations have been saved — never where you are standing.
 
 ## Documentation
 

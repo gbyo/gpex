@@ -19,6 +19,10 @@ final class RecordingCoordinator {
 
     private let trackStore: TrackStore
     private let markerStore: RecoveryMarkerStore
+    /// How often the photographer wants locations written down. Read when a recording
+    /// starts and then fixed for that recording, so changing it never disturbs one in
+    /// flight.
+    private let preferences: RecordingPreferences
     private let provider: any LocationUpdatesProvider
     /// The Lock Screen projection of this recording, if the app wired one up.
     ///
@@ -45,6 +49,7 @@ final class RecordingCoordinator {
         trackStore: TrackStore,
         markerStore: RecoveryMarkerStore,
         provider: any LocationUpdatesProvider,
+        preferences: RecordingPreferences = RecordingPreferences(),
         liveActivity: RecordingLiveActivityManager? = nil,
         allowsRestore: Bool = true,
         performanceReporter: any RecordingPerformanceReporting = NoOpRecordingPerformanceReporter(),
@@ -52,6 +57,7 @@ final class RecordingCoordinator {
     ) {
         self.trackStore = trackStore
         self.markerStore = markerStore
+        self.preferences = preferences
         self.provider = provider
         self.liveActivity = liveActivity
         self.allowsRestore = allowsRestore
@@ -69,6 +75,24 @@ final class RecordingCoordinator {
     var isPreciseLocationDenied: Bool { state.activeRecording?.fullAccuracyDenied ?? false }
     /// Core Location reported that the background activity cannot currently continue.
     var isBackgroundActivityLimited: Bool { state.activeRecording?.backgroundActivityLimited ?? false }
+
+    /// The cadence the next recording will start with — or, while one is running, the
+    /// cadence that recording actually began with.
+    ///
+    /// A running recording keeps its own interval so that changing the preference can
+    /// never alter the meaning of a session already half recorded.
+    var saveInterval: LocationSaveInterval {
+        state.activeRecording?.saveInterval ?? preferences.saveInterval
+    }
+
+    /// The remembered preference, regardless of what a running recording is doing.
+    var preferredSaveInterval: LocationSaveInterval { preferences.saveInterval }
+
+    /// Chooses the cadence for future recordings. Persisted immediately, so the next
+    /// launch — and the next App Intent — starts with it.
+    func setPreferredSaveInterval(_ interval: LocationSaveInterval) {
+        preferences.setSaveInterval(interval)
+    }
 
     // MARK: - Start
 
@@ -89,13 +113,20 @@ final class RecordingCoordinator {
         let startedAt = now()
         let sessionID = UUID()
         let name = Self.defaultSessionName(for: startedAt)
+        // Read once, here. Every way in — a tap, an App Intent, a Shortcut — arrives at
+        // this line, which is what makes the saved preference the cadence for all of
+        // them without any of them having to know about it.
+        let saveInterval = preferences.saveInterval
 
-        markerStore.save(RecoveryMarker(sessionID: sessionID, startedAt: startedAt))
+        markerStore.save(
+            RecoveryMarker(sessionID: sessionID, startedAt: startedAt, saveInterval: saveInterval)
+        )
 
         let active = ActiveRecording(
             sessionID: sessionID,
             startedAt: startedAt,
-            handles: provider.beginSessions()
+            handles: provider.beginSessions(),
+            saveInterval: saveInterval
         )
         setState(.starting(active, .waitingForAuthorization))
         Log.recording.notice("Started recording \(sessionID, privacy: .public)")
@@ -138,12 +169,17 @@ final class RecordingCoordinator {
         guard !state.isActive else { return }
         guard let marker = markerStore.load() else { return }
 
-        Log.lifecycle.notice("Restoring recording \(marker.sessionID, privacy: .public)")
+        Log.lifecycle.notice(
+            "Restoring recording \(marker.sessionID, privacy: .public) at \(marker.saveInterval.rawValue, privacy: .public)s"
+        )
 
+        // The interrupted recording's own cadence, not today's preference: a session
+        // half recorded at one interval finishes at that interval.
         let active = ActiveRecording(
             sessionID: marker.sessionID,
             startedAt: marker.startedAt,
-            handles: provider.beginSessions()
+            handles: provider.beginSessions(),
+            saveInterval: marker.saveInterval
         )
         setState(.starting(active, .acquiringLocation))
 
@@ -365,13 +401,17 @@ final class RecordingCoordinator {
             return
         }
 
+        // Three states, and only one of them is inferred from anything: `stationary`
+        // requires Core Location to have said so explicitly on this very update.
+        // Anything else — including an update that simply carries a fix — is ordinary
+        // tracking. GPeX makes no claim about whether the photographer is walking.
         let activity: RecordingActivity
         if event.locationUnavailable {
             activity = .temporarilyUnavailable
         } else if event.stationary {
             activity = .stationary
         } else {
-            activity = .moving
+            activity = .tracking
         }
         setActivity(activity, for: active)
     }
@@ -380,6 +420,15 @@ final class RecordingCoordinator {
 
     private func persist(_ sample: LocationSample, for active: ActiveRecording) async {
         guard let accepted = validate(sample, for: active) else { return }
+
+        // The saved-location interval. Note where it sits: *after* the fix has arrived
+        // and been validated, so nothing about the flow of updates changes — this only
+        // decides whether a delivery Core Location made anyway earns a row.
+        guard case .save(let reason) = active.saveGate.decide(accepted) else {
+            Log.recording.debug("Coalesced a fix inside the \(active.saveInterval.rawValue, privacy: .public)s interval")
+            return
+        }
+
         do {
             // Wait for the row to exist. Cheap in practice, and it means a fix that
             // arrives before the session is written is neither dropped nor orphaned.
@@ -389,8 +438,11 @@ final class RecordingCoordinator {
             active.lastAcceptedTimestamp = accepted.timestamp
             active.latestSample = accepted
             active.persistedPointCount = total
+            // Only a write that actually succeeded restarts the interval, so a failed
+            // append does not make the next fix look early.
+            active.saveGate.noteSaved(accepted)
             Log.recording.logCoordinateForDebugging(
-                "persisted fix",
+                "persisted fix (\(reason.rawValue))",
                 latitude: accepted.latitude,
                 longitude: accepted.longitude
             )
@@ -427,6 +479,11 @@ final class RecordingCoordinator {
     }
 
     private func recordStationaryAtLastKnownPosition(for active: ActiveRecording) async {
+        // Nothing is written, so the interval is untouched — but the next fix that is
+        // *not* stationary is now the first one after a stationary stretch, and the gate
+        // has to know that to let it through early.
+        active.saveGate.noteStationaryWithoutLocation()
+
         let cutoff = now().addingTimeInterval(-Self.stationaryBackfillWindow)
         do {
             _ = try await trackStore.markLatestPointStationary(

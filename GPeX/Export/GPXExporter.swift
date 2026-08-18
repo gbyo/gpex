@@ -66,7 +66,7 @@ nonisolated struct GPXExporter {
         /// How soon after the session start a first fix may be backdated to it.
         var startAnchorWindow: TimeInterval = 30
         /// How stale a non-stationary final fix may be and still cover the session end.
-        var endAnchorWindowWhileMoving: TimeInterval = 30
+        var endAnchorWindowWhileTracking: TimeInterval = 30
         /// Above this speed the photographer counts as moving, so a fix must not be
         /// projected backwards onto the session start.
         var movementSpeedThreshold: Double = 1.0
@@ -147,7 +147,7 @@ nonisolated struct GPXExporter {
         // who was moving was not, so their last position is not projected forward.
         if let endedAt, endedAt > last.timestamp {
             let staleness = endedAt.timeIntervalSince(last.timestamp)
-            if last.stationary || staleness <= configuration.endAnchorWindowWhileMoving {
+            if last.stationary || staleness <= configuration.endAnchorWindowWhileTracking {
                 planned.append(GPXTrackPoint(sample: last, at: endedAt, origin: .sessionEndAnchor))
             }
         }

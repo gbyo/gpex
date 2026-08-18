@@ -11,6 +11,15 @@ import OSLog
 nonisolated struct RecoveryMarker: Sendable, Equatable {
     var sessionID: UUID
     var startedAt: Date
+    /// The cadence the interrupted recording was running at, so resuming it does not
+    /// silently change how often locations are saved half way through a session.
+    var saveInterval: LocationSaveInterval
+
+    init(sessionID: UUID, startedAt: Date, saveInterval: LocationSaveInterval = .default) {
+        self.sessionID = sessionID
+        self.startedAt = startedAt
+        self.saveInterval = saveInterval
+    }
 }
 
 /// Reads and writes the recovery marker. Main-actor only, like the recording itself.
@@ -19,6 +28,7 @@ final class RecoveryMarkerStore {
     static let recordingRequestedKey = "recordingRequested"
     static let sessionIDKey = "activeRecordingSessionID"
     static let startedAtKey = "activeRecordingStartedAt"
+    static let saveIntervalKey = "activeRecordingSaveIntervalSeconds"
 
     private let defaults: UserDefaults
 
@@ -41,12 +51,20 @@ final class RecoveryMarkerStore {
             clear()
             return nil
         }
-        return RecoveryMarker(sessionID: id, startedAt: startedAt)
+        // Deliberately not part of the all-three-agree check above. A marker written by
+        // a version of GPeX that predates the setting is perfectly valid; it simply
+        // resumes at the default cadence rather than being thrown away.
+        return RecoveryMarker(
+            sessionID: id,
+            startedAt: startedAt,
+            saveInterval: LocationSaveInterval(storedSeconds: defaults.integer(forKey: Self.saveIntervalKey))
+        )
     }
 
     func save(_ marker: RecoveryMarker) {
         defaults.set(marker.sessionID.uuidString, forKey: Self.sessionIDKey)
         defaults.set(marker.startedAt, forKey: Self.startedAtKey)
+        defaults.set(marker.saveInterval.rawValue, forKey: Self.saveIntervalKey)
         // Written last so a partially written marker never reads as active.
         defaults.set(true, forKey: Self.recordingRequestedKey)
     }
@@ -56,5 +74,6 @@ final class RecoveryMarkerStore {
         defaults.set(false, forKey: Self.recordingRequestedKey)
         defaults.removeObject(forKey: Self.sessionIDKey)
         defaults.removeObject(forKey: Self.startedAtKey)
+        defaults.removeObject(forKey: Self.saveIntervalKey)
     }
 }

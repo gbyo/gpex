@@ -65,7 +65,7 @@ extension RecordingLiveStatus {
         switch phase {
         case .waitingForAuthorization: self = .waitingForAuthorization
         case .acquiringLocation: self = .acquiringLocation
-        case .moving: self = .moving
+        case .tracking: self = .tracking
         case .stationary: self = .stationary
         case .temporarilyUnavailable: self = .temporarilyUnavailable
         case .stopping: self = .stopping

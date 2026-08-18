@@ -9,11 +9,18 @@ nonisolated enum StartupPhase: Sendable, Equatable {
     case acquiringLocation
 }
 
-/// What the photographer is doing, according to Core Location.
+/// What a running recording is currently able to say about itself.
+///
+/// Deliberately *not* a claim about what the photographer is doing. GPeX does not try to
+/// classify activity: it has no Core Motion, no speed thresholds and no timers, so the
+/// only thing it could honestly infer is what Core Location has already told it.
 nonisolated enum RecordingActivity: Sendable, Equatable {
-    case moving
-    /// Core Location has automatically stopped delivering because the device is not
-    /// moving. The recording is still active — this is not a pause.
+    /// The ordinary state of a running recording: locations are being tracked. This is
+    /// what a recording says whenever Core Location has not said anything more specific.
+    case tracking
+    /// Core Location has explicitly reported the device stationary and stopped
+    /// delivering to save power. The recording is still active — this is not a pause,
+    /// and it ends by itself when Core Location starts delivering again.
     case stationary
     /// Core Location cannot currently determine a position.
     case temporarilyUnavailable
@@ -70,7 +77,7 @@ nonisolated enum RecordingPhase: Sendable, Equatable {
     case idle
     case waitingForAuthorization
     case acquiringLocation
-    case moving
+    case tracking
     case stationary
     case temporarilyUnavailable
     case stopping
@@ -79,7 +86,7 @@ nonisolated enum RecordingPhase: Sendable, Equatable {
     var isActive: Bool {
         switch self {
         case .idle, .failed: false
-        case .waitingForAuthorization, .acquiringLocation, .moving, .stationary,
+        case .waitingForAuthorization, .acquiringLocation, .tracking, .stationary,
              .temporarilyUnavailable, .stopping: true
         }
     }
@@ -91,7 +98,7 @@ extension RecordingState {
         case .idle: .idle
         case .starting(_, .waitingForAuthorization): .waitingForAuthorization
         case .starting(_, .acquiringLocation): .acquiringLocation
-        case .recording(_, .moving): .moving
+        case .recording(_, .tracking): .tracking
         case .recording(_, .stationary): .stationary
         case .recording(_, .temporarilyUnavailable): .temporarilyUnavailable
         case .stopping: .stopping
@@ -114,6 +121,11 @@ extension RecordingState {
 final class ActiveRecording {
     @ObservationIgnored let sessionID: UUID
     @ObservationIgnored let startedAt: Date
+
+    /// Decides which delivered fixes are worth persisting, at the cadence this recording
+    /// began with. Fixed for the recording's lifetime — including one resumed from a
+    /// recovery marker, which restores the cadence it was interrupted at.
+    @ObservationIgnored var saveGate: SavedLocationGate
 
     /// The retained Core Location sessions. Released only by a stop or a failure.
     @ObservationIgnored let handles: any LocationSessionHandles
@@ -141,10 +153,19 @@ final class ActiveRecording {
     /// True once at least one usable fix has been persisted.
     var hasUsableFix: Bool { persistedPointCount > 0 }
 
-    init(sessionID: UUID, startedAt: Date, handles: any LocationSessionHandles) {
+    /// The cadence this recording persists at.
+    var saveInterval: LocationSaveInterval { saveGate.interval }
+
+    init(
+        sessionID: UUID,
+        startedAt: Date,
+        handles: any LocationSessionHandles,
+        saveInterval: LocationSaveInterval
+    ) {
         self.sessionID = sessionID
         self.startedAt = startedAt
         self.handles = handles
+        self.saveGate = SavedLocationGate(interval: saveInterval)
     }
 
     /// Stops consuming updates and diagnostics.

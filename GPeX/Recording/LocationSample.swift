@@ -117,6 +117,14 @@ nonisolated struct LocationSample: Sendable, Equatable {
 
     var quality: LocationQuality { LocationQuality(horizontalAccuracy: horizontalAccuracy) }
 
+    /// Metres between two fixes, on the sphere Core Location itself measures on.
+    ///
+    /// Pure arithmetic: `CLLocation` here is a value, not a request for hardware.
+    func distance(from other: LocationSample) -> CLLocationDistance {
+        CLLocation(latitude: latitude, longitude: longitude)
+            .distance(from: CLLocation(latitude: other.latitude, longitude: other.longitude))
+    }
+
     /// True when the fix suggests the photographer was walking rather than standing.
     ///
     /// Used to decide whether the exporter may safely extend a coordinate backwards

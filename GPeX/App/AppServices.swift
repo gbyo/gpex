@@ -21,6 +21,9 @@ final class AppServices {
     let performanceMonitor: PerformanceMonitor
     /// The only surface App Intents touch.
     let intentActions: any GPeXIntentActions
+    /// The recording choices that outlive a session. Owned here so the picker on the
+    /// home screen, a restored recording and an App Intent all read the same value.
+    let preferences: RecordingPreferences
 
     private init() {
         let mode = AppLaunchMode.current
@@ -35,10 +38,14 @@ final class AppServices {
                 script: mode == .uiTesting ? TestLocationUpdatesProvider.uiTestingScript() : []
             )
 
+        let defaults = Self.makeDefaults(for: mode)
+        preferences = RecordingPreferences(defaults: defaults)
+
         coordinator = RecordingCoordinator(
             trackStore: trackStore,
-            markerStore: RecoveryMarkerStore(defaults: Self.makeDefaults(for: mode)),
+            markerStore: RecoveryMarkerStore(defaults: defaults),
             provider: provider,
+            preferences: preferences,
             // The one place ActivityKit is attached to the recording engine.
             liveActivity: RecordingLiveActivityManager(),
             allowsRestore: mode.restoresInterruptedRecording,

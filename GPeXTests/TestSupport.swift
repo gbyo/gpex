@@ -114,6 +114,7 @@ struct RecordingHarness {
     let store: TrackStore
     let provider: TestLocationUpdatesProvider
     let markerStore: RecoveryMarkerStore
+    let preferences: RecordingPreferences
     let defaults: UserDefaults
     let clock: MutableClock
     let coordinator: RecordingCoordinator
@@ -126,6 +127,9 @@ struct RecordingHarness {
     init(
         allowsRestore: Bool = true,
         liveActivity: RecordingLiveActivityManager? = nil,
+        /// The cadence the harness's recordings start at. `nil` leaves the preference
+        /// unwritten, which is what a fresh install looks like.
+        saveInterval: LocationSaveInterval? = nil,
         performanceReporter: any RecordingPerformanceReporting = SpyPerformanceReporter()
     ) throws {
         let (store, container) = try makeTrackStore()
@@ -139,6 +143,9 @@ struct RecordingHarness {
         defaults.removePersistentDomain(forName: suiteName)
         self.defaults = defaults
         self.markerStore = RecoveryMarkerStore(defaults: defaults)
+        let preferences = RecordingPreferences(defaults: defaults)
+        if let saveInterval { preferences.setSaveInterval(saveInterval) }
+        self.preferences = preferences
 
         let clock = MutableClock()
         self.clock = clock
@@ -148,6 +155,7 @@ struct RecordingHarness {
             trackStore: store,
             markerStore: markerStore,
             provider: provider,
+            preferences: preferences,
             liveActivity: liveActivity,
             allowsRestore: allowsRestore,
             performanceReporter: performanceReporter,
@@ -163,7 +171,7 @@ struct RecordingHarness {
 
 @MainActor
 extension RecordingHarness {
-    /// Delivers a fix, moving the clock forward to its timestamp first.
+    /// Delivers a fix, advancing the clock to its timestamp first.
     ///
     /// This models what really happens: a fix arrives at about the time it was taken.
     /// Emitting without advancing the clock would hand the coordinator a future-dated
@@ -172,6 +180,17 @@ extension RecordingHarness {
         if sample.timestamp > clock.now { clock.now = sample.timestamp }
         provider.emit(sample)
     }
+}
+
+@MainActor
+extension RecordingHarness {
+    /// The session id of the recording currently in flight.
+    func activeSessionID() throws -> UUID {
+        try #require(coordinator.state.activeRecording?.sessionID)
+    }
+
+    /// The gate state of the recording in flight, for asserting on what it decided.
+    var saveGate: SavedLocationGate? { coordinator.state.activeRecording?.saveGate }
 }
 
 /// Polls a condition instead of sleeping for a fixed interval, so tests are as fast as

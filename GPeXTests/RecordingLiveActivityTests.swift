@@ -25,7 +25,7 @@ struct RecordingLiveContentTests {
         .init(phase: .acquiringLocation,
               status: .acquiringLocation,
               label: "Acquiring Location"),
-        .init(phase: .moving, status: .moving, label: "Moving"),
+        .init(phase: .tracking, status: .tracking, label: "Recording"),
         .init(phase: .stationary, status: .stationary, label: "Stationary"),
         .init(phase: .temporarilyUnavailable,
               status: .temporarilyUnavailable,
@@ -102,7 +102,7 @@ struct RecordingLiveContentTests {
     /// assertion is against the app's own formatter rather than a literal.
     @Test("Accuracy is included when a current fix describes one")
     func accuracyIncluded() throws {
-        for phase in [RecordingPhase.moving, .stationary] {
+        for phase in [RecordingPhase.tracking, .stationary] {
             let state = try #require(
                 RecordingLiveSnapshot.fixture(phase: phase, horizontalAccuracy: 7).contentState
             )
@@ -156,11 +156,11 @@ struct RecordingLiveContentTests {
     @Test("Reduced accuracy is carried as its own flag and does not stop the recording")
     func reducedAccuracyIsItsOwnFlag() throws {
         let on = try #require(
-            RecordingLiveSnapshot.fixture(phase: .moving, reducedAccuracy: true).contentState
+            RecordingLiveSnapshot.fixture(phase: .tracking, reducedAccuracy: true).contentState
         )
         #expect(on.reducedAccuracy)
         // Still a normal, running recording — it just says the positions are coarser.
-        #expect(on.status == .moving)
+        #expect(on.status == .tracking)
 
         let off = try #require(RecordingLiveSnapshot.fixture(reducedAccuracy: false).contentState)
         #expect(!off.reducedAccuracy)
@@ -361,7 +361,7 @@ struct RecordingLiveActivityManagerTests {
         let sessionID = UUID()
         let before = RecordingLiveSnapshot.fixture(
             sessionID: sessionID,
-            phase: .moving,
+            phase: .tracking,
             horizontalAccuracy: 7,
             pointCount: 38,
             reducedAccuracy: false
@@ -527,7 +527,7 @@ struct RecordingLiveActivityManagerTests {
     func endFlushesQueuedUpdates() async throws {
         let (manager, host) = makeManager()
         let sessionID = UUID()
-        manager.start(.fixture(sessionID: sessionID, phase: .moving, pointCount: 1))
+        manager.start(.fixture(sessionID: sessionID, phase: .tracking, pointCount: 1))
         let handle = try #require(host.created.first)
 
         manager.update(.fixture(sessionID: sessionID, phase: .stopping, pointCount: 1))
@@ -569,7 +569,7 @@ struct RecordingLiveActivityIntegrationTests {
         #expect(host.requested.count == 1)
     }
 
-    @Test("Accepted fixes move the activity through acquiring, moving and stationary")
+    @Test("Accepted fixes move the activity through acquiring, tracking and stationary")
     func activityFollowsRecordingState() async throws {
         let (harness, host, manager) = try makeHarness()
         await harness.coordinator.startRecording()
@@ -579,7 +579,7 @@ struct RecordingLiveActivityIntegrationTests {
         try await waitUntil("acquiring") { harness.coordinator.phase == .acquiringLocation }
 
         harness.deliver(sample(1, accuracy: 6))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
 
         harness.deliver(sample(2, accuracy: 9, stationary: true))
         try await waitUntil("stationary") { harness.coordinator.phase == .stationary }
@@ -589,7 +589,7 @@ struct RecordingLiveActivityIntegrationTests {
         #expect(statuses.first == .waitingForAuthorization)
         #expect(statuses.last == .stationary)
         #expect(statuses.contains(.acquiringLocation))
-        #expect(statuses.contains(.moving))
+        #expect(statuses.contains(.tracking))
 
         // The count and accuracy shown are the recording engine's, not the widget's.
         #expect(handle.latestState?.pointCount == harness.coordinator.recordedPointCount)

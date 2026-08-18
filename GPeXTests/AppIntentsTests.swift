@@ -117,6 +117,45 @@ struct AppIntentsTests {
         #expect(harness.provider.sessionsCreated == 1)
     }
 
+    // MARK: - The saved cadence
+
+    @Test("An intent-started recording uses the saved interval")
+    func intentUsesTheSavedInterval() async throws {
+        let harness = try RecordingHarness(saveInterval: .oneMinute)
+        let actions = harness.intentActions
+
+        await actions.startRecording()
+
+        // The intent knows nothing about intervals; it starts a recording the same way a
+        // tap does, and that path is the one place the preference is read.
+        #expect(harness.coordinator.saveInterval == .oneMinute)
+    }
+
+    @Test("With no preference saved, an intent-started recording uses thirty seconds")
+    func intentDefaultsToThirtySeconds() async throws {
+        // Nothing has ever been written in this harness's defaults domain, which is what
+        // a Shortcut fired on a fresh install sees.
+        let harness = try RecordingHarness()
+        let actions = harness.intentActions
+
+        await actions.startRecording()
+
+        #expect(harness.coordinator.saveInterval == .thirtySeconds)
+        #expect(harness.coordinator.saveInterval == .default)
+    }
+
+    @Test("An interval chosen in the app is the one a later intent starts with")
+    func intentPicksUpAChangedPreference() async throws {
+        let harness = try RecordingHarness()
+        // The photographer changes it on the home screen...
+        harness.coordinator.setPreferredSaveInterval(.tenSeconds)
+        // ...then starts from Siri rather than by tapping.
+        await harness.intentActions.startRecording()
+
+        #expect(harness.coordinator.saveInterval == .tenSeconds)
+        #expect(try #require(harness.markerStore.load()).saveInterval == .tenSeconds)
+    }
+
     // MARK: - The dependency boundary
 
     @Test("Intent dependencies can be replaced with a test implementation")

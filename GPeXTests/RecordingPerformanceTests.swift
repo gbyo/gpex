@@ -12,7 +12,7 @@ struct RecordingPerformanceTests {
     func phaseLabels() {
         #expect(RecordingPhase.waitingForAuthorization.performanceStateLabel == "authorization")
         #expect(RecordingPhase.acquiringLocation.performanceStateLabel == "acquiring")
-        #expect(RecordingPhase.moving.performanceStateLabel == "moving")
+        #expect(RecordingPhase.tracking.performanceStateLabel == "tracking")
         #expect(RecordingPhase.stationary.performanceStateLabel == "stationary")
         #expect(RecordingPhase.temporarilyUnavailable.performanceStateLabel == "unavailable")
         #expect(RecordingPhase.stopping.performanceStateLabel == "stopping")
@@ -56,14 +56,14 @@ struct RecordingPerformanceTests {
         try await waitUntil("acquiring") { harness.coordinator.phase == .acquiringLocation }
 
         harness.deliver(sample(1))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
 
         harness.deliver(sample(2, stationary: true))
         try await waitUntil("stationary") { harness.coordinator.phase == .stationary }
 
         await harness.coordinator.stopRecording()
 
-        #expect(spy.reportedLabels == ["authorization", "acquiring", "moving", "stationary", "stopping", nil])
+        #expect(spy.reportedLabels == ["authorization", "acquiring", "tracking", "stationary", "stopping", nil])
     }
 
     @Test("Re-asserting the same phase is not reported again")
@@ -73,17 +73,17 @@ struct RecordingPerformanceTests {
 
         await harness.coordinator.startRecording()
         harness.deliver(sample(1))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
         let afterFirstFix = spy.reportedPhases.count
 
-        // Three more moving fixes. The phase never changes, so nothing is reported.
+        // Three more fixes at new positions. The phase never changes, so nothing is reported.
         harness.deliver(sample(2, positionB))
         harness.deliver(sample(3, positionC))
         harness.deliver(sample(4, positionA))
         try await waitUntil("four points") { harness.coordinator.recordedPointCount == 4 }
 
         #expect(spy.reportedPhases.count == afterFirstFix)
-        #expect(spy.reportedLabels.last == "moving")
+        #expect(spy.reportedLabels.last == "tracking")
     }
 
     @Test("A second Start reports nothing, because nothing transitioned")
@@ -160,7 +160,7 @@ struct RecordingPerformanceTests {
 
         await harness.coordinator.startRecording()
         harness.deliver(sample(1))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
         await harness.coordinator.stopRecording()
 
         #expect(harness.coordinator.phase == .idle)
@@ -171,8 +171,8 @@ struct RecordingPerformanceTests {
         // On iOS 26 this is the no-op; on iOS 27 it is the StateReporting one. Either
         // way the coordinator gets something, and neither can throw.
         let reporter = RecordingPerformanceReporterFactory.make()
-        reporter.transition(to: .moving)
-        reporter.transition(to: .moving)
+        reporter.transition(to: .tracking)
+        reporter.transition(to: .tracking)
         reporter.transition(to: .idle)
 
         if #available(iOS 27, *) {

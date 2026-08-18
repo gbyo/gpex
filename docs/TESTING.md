@@ -35,7 +35,7 @@ The Live Activity is covered by three further suites:
 - **manager** — one activity per recording, identical content not re-sent, update ordering, idempotent ending, and reassociation by session UUID rather than by position
 - **integration with the coordinator** — a refusing or disabled ActivityKit does not stop recording, and stopping, failing or abandoning all end the activity
 
-The widget's own presentations are checked with `#Preview` blocks in `GPeXLiveActivity/RecordingLiveActivityWidget.swift`, covering the Lock Screen and all three Dynamic Island presentations for acquiring, moving, stationary, temporarily unavailable, and reduced accuracy.
+The widget's own presentations are checked with `#Preview` blocks in `GPeXLiveActivity/RecordingLiveActivityWidget.swift`, covering the Lock Screen and all three Dynamic Island presentations for acquiring, tracking, stationary, temporarily unavailable, and reduced accuracy.
 
 `GPeXUITests` is a small XCUITest suite. The `-GPeXUITesting` launch argument swaps in scripted locations and an in-memory store so UI tests do not depend on live GPS or the system location-permission prompt.
 
@@ -77,7 +77,7 @@ The same walk validates the Live Activity, on a Dynamic Island iPhone. This stil
 1. With the phone locked, confirm the Lock Screen activity appears.
 2. Confirm the elapsed timer advances **while the app is not running**. It should keep counting through a long stationary stretch with no ActivityKit traffic at all — the `recording` log category will be silent.
 3. Stand still until Core Location reports stationary. Confirm the activity reads **Stationary — Saving battery**, not "Paused".
-4. Walk 30 to 50 meters. Confirm it returns to **Moving**, and that accuracy and the location count change only after real fixes arrive.
+4. Walk 30 to 50 meters. Confirm it returns to **Recording — Tracking location**, and that accuracy and the location count change only after real fixes arrive. Nothing should ever read "Moving".
 5. Check the compact, minimal, and expanded Dynamic Island presentations.
 6. Leave it running for 30 to 60 minutes and compare battery and CPU against a build without the feature. Adding the Live Activity should not change them materially. If it does, something is sending updates it should not.
 7. Stop the recording from inside GPeX. The activity should disappear promptly.
@@ -94,7 +94,7 @@ To exercise recording recovery:
 3. Force-quit GPeX from the app switcher.
 4. Reopen the app.
 5. Confirm the same recording is restored rather than a new one being created.
-6. Continue moving and confirm new fixes are added after restoration.
+6. Walk on and confirm new fixes are added after restoration, at the same interval the recording started with.
 
 A force quit creates a real gap in recording coverage. GPeX does not claim to record through that gap and must not fabricate coordinates to fill it.
 
