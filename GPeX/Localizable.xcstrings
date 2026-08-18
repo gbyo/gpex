@@ -1,0 +1,232 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@ – %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ – %2$@"
+          }
+        }
+      }
+    },
+    "%@.%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@.%2$lld"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld locations recorded" : {
+
+    },
+    "--:--" : {
+
+    },
+    "Accuracy" : {
+
+    },
+    "Accuracy %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Accuracy %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "Accuracy not yet available" : {
+
+    },
+    "All %lld recorded locations will be deleted. This cannot be undone." : {
+
+    },
+    "Applied to exported GPX timestamps only. Recorded positions are never changed." : {
+
+    },
+    "Background recording is limited" : {
+
+    },
+    "Best accuracy" : {
+
+    },
+    "CAMERA CLOCK" : {
+
+    },
+    "Camera Clock" : {
+
+    },
+    "Camera Clock Correction" : {
+
+    },
+    "Camera clock was" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Clear Correction" : {
+
+    },
+    "Coordinated Universal Time %@" : {
+
+    },
+    "Correction" : {
+
+    },
+    "Date" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete Track" : {
+
+    },
+    "Delete this track?" : {
+
+    },
+    "Dismiss" : {
+
+    },
+    "Duration" : {
+
+    },
+    "ELAPSED" : {
+
+    },
+    "Export GPX" : {
+
+    },
+    "Export adjustment" : {
+
+    },
+    "Fast means the camera clock read later than this iPhone. Slow means it read earlier." : {
+
+    },
+    "GPeX" : {
+
+    },
+    "Hours: %lld" : {
+
+    },
+    "Local time %@" : {
+
+    },
+    "Locations" : {
+
+    },
+    "Minutes: %lld" : {
+
+    },
+    "Name" : {
+
+    },
+    "No Tracks Yet" : {
+
+    },
+    "Open Camera Clock" : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Photograph this screen with your camera, then compare the two times to find the camera's drift." : {
+
+    },
+    "Precise Location is off. Photo positioning may be inaccurate." : {
+
+    },
+    "Preparing export…" : {
+
+    },
+    "Recorded locations" : {
+
+    },
+    "Recorded positions keep their real timestamps. Only the exported GPX file is shifted." : {
+
+    },
+    "Recording" : {
+
+    },
+    "Reduced Accuracy" : {
+
+    },
+    "Rename" : {
+
+    },
+    "Rename Track" : {
+
+    },
+    "Search tracks" : {
+
+    },
+    "Seconds: %lld" : {
+
+    },
+    "Shows the Camera Clock so you can photograph it and measure your camera's drift." : {
+
+    },
+    "Start GPeX Recording" : {
+
+    },
+    "Start Recording" : {
+
+    },
+    "Start a recording before you shoot. GPeX saves where you were, so Lightroom can put your photos on the map." : {
+
+    },
+    "Starts recording a GPS track so your camera photos can be matched to positions later." : {
+
+    },
+    "Status" : {
+
+    },
+    "Stop Recording" : {
+
+    },
+    "Time" : {
+
+    },
+    "Track Unavailable" : {
+
+    },
+    "Track name" : {
+
+    },
+    "Tracks stay on this iPhone until you export or delete them." : {
+
+    },
+    "Typical accuracy" : {
+
+    },
+    "UTC %@.%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "UTC %1$@.%2$lld"
+          }
+        }
+      }
+    },
+    "iOS has paused location updates for GPeX. Keeping GPeX open will record reliably." : {
+
+    },
+    "—" : {
+
+    },
+    "“%@” and all of its recorded locations will be deleted. This cannot be undone." : {
+
+    }
+  },
+  "version" : "1.0"
+}

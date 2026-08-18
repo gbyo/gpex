@@ -18,6 +18,14 @@ extension RecordingPhase {
         }
     }
 
+    /// The single line a status indicator should carry.
+    ///
+    /// Prefers the activity, because `headline` flattens moving, stationary and
+    /// unavailable into the same word — and once an elapsed timer is running beside
+    /// it, "Recording" is the part the reader already knows. Falls back to the
+    /// headline for the states that have no activity: startup, stopping, failure.
+    var statusTitle: String { activityTitle ?? headline }
+
     /// The activity line: `Moving`, `Stationary`, or why nothing is arriving.
     var activityTitle: String? {
         switch self {

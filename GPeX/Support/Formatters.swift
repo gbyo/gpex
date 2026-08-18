@@ -52,6 +52,14 @@ nonisolated enum Formatters {
         return "\(day) · \(compactDuration(endedAt.timeIntervalSince(startedAt)))"
     }
 
+    /// `5:42 PM · 1 hr 42 min` — a row inside a date-titled section, where repeating
+    /// the day would say nothing the section header has not already said.
+    static func groupedSessionSubtitle(startedAt: Date, endedAt: Date?) -> String {
+        let time = sessionTime(startedAt)
+        guard let endedAt else { return "\(time) · Unfinished" }
+        return "\(time) · \(compactDuration(endedAt.timeIntervalSince(startedAt)))"
+    }
+
     /// `UTC−04:00`
     static func utcOffset(secondsFromGMT: Int) -> String {
         let sign = secondsFromGMT < 0 ? "−" : "+"

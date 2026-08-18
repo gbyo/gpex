@@ -3,32 +3,30 @@ import SwiftUI
 /// A clock to photograph before an event, so the camera's drift can be measured later.
 ///
 /// Deliberately plain: high contrast, no animation, no chrome. `TimelineView` drives
-/// the redraws so there is no timer to own or leak, and the idle timer is disabled only
-/// while this screen is on screen.
+/// the redraws so there is no timer to own or leak, and `photographableScreen()` keeps
+/// the display awake, bright and overlay-free for exactly as long as this is visible.
 struct CameraClockView: View {
     @State private var anchor = Date()
     @ScaledMetric(relativeTo: .largeTitle) private var timeFontSize: CGFloat = 56
 
-    private static let localTime: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("jmmss")
-        return formatter
-    }()
+    /// Locale-aware wall clock: 12- or 24-hour according to the reader's settings.
+    private static let localTime = Date.FormatStyle.dateTime.hour().minute().second()
 
-    private static let localDate: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .none
-        return formatter
-    }()
+    private static let localDate = Date.FormatStyle(date: .long, time: .omitted)
 
-    private static let utcTime: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm:ss"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter
-    }()
+    /// Fixed 24-hour UTC, independent of locale and calendar.
+    ///
+    /// Verbatim rather than a localised style on purpose: this reading is compared
+    /// against a camera's own clock and against the `<time>` elements in the exported
+    /// GPX, both of which are unambiguous 24-hour UTC. A reader in a 12-hour locale
+    /// must still see 14:03:07 here.
+    private static let utcTime = Date.VerbatimFormatStyle(
+        format: """
+            \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits)
+            """,
+        timeZone: .gmt,
+        calendar: Calendar(identifier: .gregorian)
+    )
 
     var body: some View {
         // Tenths are enough to measure camera drift, and 10 Hz is cheap.
@@ -43,25 +41,25 @@ struct CameraClockView: View {
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(Self.localTime.string(from: date)).\(tenths)")
+                    Text("\(date.formatted(Self.localTime)).\(tenths)")
                         .font(.system(size: timeFontSize, weight: .bold, design: .monospaced))
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.4)
-                        .accessibilityLabel("Local time \(Self.localTime.string(from: date))")
+                        .accessibilityLabel("Local time \(date.formatted(Self.localTime))")
 
-                    Text(Self.localDate.string(from: date))
+                    Text(date.formatted(Self.localDate))
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("UTC \(Self.utcTime.string(from: date)).\(tenths)")
+                    Text("UTC \(date.formatted(Self.utcTime)).\(tenths)")
                         .font(.system(size: timeFontSize * 0.52, weight: .semibold, design: .monospaced))
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.4)
-                        .accessibilityLabel("Coordinated Universal Time \(Self.utcTime.string(from: date))")
+                        .accessibilityLabel("Coordinated Universal Time \(date.formatted(Self.utcTime))")
 
                     Text(Formatters.utcOffset(secondsFromGMT: TimeZone.current.secondsFromGMT(for: date)))
                         .font(.title3.monospacedDigit())
@@ -83,8 +81,7 @@ struct CameraClockView: View {
         }
         .navigationTitle("Camera Clock")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .photographableScreen()
     }
 
     private static func tenths(of date: Date) -> Int {
@@ -103,3 +100,18 @@ struct CameraClockView: View {
         return "\(hours) hours \(minutes) minutes \(direction) Coordinated Universal Time"
     }
 }
+
+#if DEBUG
+#Preview("Camera clock") {
+    NavigationStack {
+        CameraClockView()
+    }
+}
+
+#Preview("Camera clock · AX3") {
+    NavigationStack {
+        CameraClockView()
+    }
+    .environment(\.dynamicTypeSize, .accessibility3)
+}
+#endif

@@ -337,9 +337,29 @@ RecordingActivityAttributes   the only file shared with the widget extension
 Views                       RootView, HomeView, ActiveRecordingView,
                             SessionDetailView, CameraClockView,
                             ClockCorrectionView
+  Cards                       StatCard / NoticeCard, shared by Home and recording
+  RecordingStatusText         phase → plain sentences (no SwiftUI)
+  RecordingStatusStyle        phase → symbol + tint (SwiftUI)
+  SessionGrouping             tracks → Today / Yesterday / month sections
+  PhotographableScreen        awake, bright, overlay-free while visible
+  PreviewSupport              in-memory world for #Preview (DEBUG only)
 ```
 
 Everything user-visible runs on the main actor. Location updates are infrequent enough that adding a second isolation domain would add coordination complexity without a meaningful benefit for this app.
+
+## The view layer
+
+Two screens carry the app, and they are shaped differently on purpose.
+
+**The recording screen is a hero, not a list.** A photographer reads it mid-event for under a second, so it is a status pill, an elapsed timer and two figures, centred in the screen with Stop pinned to the bottom in its own bar. It uses `Text(timerInterval:)` rather than a `TimelineView`: the text updates itself without invalidating the view every second, and it is the same construct the Live Activity uses, so the Lock Screen and the app cannot drift apart. The content is laid out with `minHeight: proxy.size.height` and centre alignment, so it sits in the middle when short and scrolls rather than clipping when a notice or an accessibility text size makes it tall.
+
+**The home screen is content plus one action.** The list holds nothing but recorded tracks, grouped by `SessionGrouping` into Today / Yesterday / Earlier This Week / month. The Camera Clock is a tool rather than a track, so it lives in the toolbar. Start Recording sits in a bottom bar where it is reachable one-handed and cannot scroll away — which is also why search is pinned to `.navigationBarDrawer`: left to itself iOS 26 puts the search field in a bottom bar, directly underneath the primary action.
+
+Nothing depends on colour alone. `RecordingStatusText` maps a phase to sentences and stays free of SwiftUI — it is unit tested, and the Live Activity's `Codable` state carries the same `String`s — while `RecordingStatusStyle` adds the symbol and tint beside that wording. Only the two genuinely in-progress phases animate their symbol, so motion means "something is happening" rather than decoration.
+
+`SessionGrouping` takes `now` as a parameter and never consults the real clock; `Calendar.isDateInToday` would silently ignore that parameter, so day comparisons go through `isDate(_:inSameDayAs:)` against the injected value instead.
+
+Every screen has `#Preview`s, built on `PreviewSupport`. Previews use the *real* `TrackStore` and `RecordingCoordinator` with only the two seams the app already has swapped — an in-memory store and `TestLocationUpdatesProvider`. A fake coordinator with settable properties could show a combination the state machine cannot produce; `RecordingPreviewHost` instead drives `startRecording()` and the real event stream, so a phase that renders wrongly in the canvas renders wrongly on a device too.
 
 ## The Live Activity
 

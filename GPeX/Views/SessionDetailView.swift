@@ -3,6 +3,16 @@ import SwiftUI
 import OSLog
 
 struct SessionDetailView: View {
+    /// Everything that changes the exported bytes, as one value `task(id:)` can watch.
+    ///
+    /// A struct rather than an interpolated string so that adding a field is a compile
+    /// step rather than a silently-forgotten `|` in a format.
+    private struct ExportSignature: Hashable {
+        let name: String
+        let cameraClockOffsetSeconds: Double
+        let pointCount: Int
+    }
+
     let sessionID: UUID
     let trackStore: TrackStore
 
@@ -14,6 +24,7 @@ struct SessionDetailView: View {
     @State private var exportProblem: String?
     @State private var editedName = ""
     @State private var isConfirmingDelete = false
+    @FocusState private var isNameFocused: Bool
 
     init(sessionID: UUID, trackStore: TrackStore) {
         self.sessionID = sessionID
@@ -32,22 +43,26 @@ struct SessionDetailView: View {
                 content(for: session)
             } else {
                 // The session was deleted from under us.
-                ContentUnavailableView("Session Unavailable", systemImage: "questionmark.folder")
+                ContentUnavailableView("Track Unavailable", systemImage: "questionmark.folder")
             }
         }
-        .navigationTitle(session?.name ?? "Session")
+        .navigationTitle(session?.name ?? "Track")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder
     private func content(for session: TrackSession) -> some View {
-        // One signature covering everything that changes the exported bytes.
-        let exportSignature = "\(session.name)|\(session.cameraClockOffsetSeconds)|\(summary.pointCount)"
+        let exportSignature = ExportSignature(
+            name: session.name,
+            cameraClockOffsetSeconds: session.cameraClockOffsetSeconds,
+            pointCount: summary.pointCount
+        )
 
         List {
             Section("Name") {
-                TextField("Session name", text: $editedName)
+                TextField("Track name", text: $editedName)
                     .submitLabel(.done)
+                    .focused($isNameFocused)
                     .onSubmit { commitName() }
                     .accessibilityIdentifier("sessionName")
             }
@@ -86,9 +101,11 @@ struct SessionDetailView: View {
                         offsetSeconds: session.cameraClockOffsetSeconds
                     )
                 } label: {
-                    LabeledContent("Camera Clock Correction") {
+                    LabeledContent {
                         Text(ClockCorrection(offsetSeconds: session.cameraClockOffsetSeconds).summary)
                             .accessibilityIdentifier("cameraClockCorrectionSummary")
+                    } label: {
+                        Label("Camera Clock Correction", systemImage: "clock.arrow.trianglehead.2.counterclockwise.rotate.90")
                     }
                 }
                 .accessibilityIdentifier("cameraClockCorrection")
@@ -101,8 +118,16 @@ struct SessionDetailView: View {
             }
 
             Section {
-                Button("Delete Session", role: .destructive) { isConfirmingDelete = true }
-                    .accessibilityIdentifier("deleteSession")
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    // The destructive role reddens the title but leaves the symbol on
+                    // the app tint, which reads as a mixed signal on the one row that
+                    // must not be ambiguous.
+                    Label("Delete Track", systemImage: "trash")
+                        .foregroundStyle(.red)
+                }
+                .accessibilityIdentifier("deleteSession")
             }
         }
         .task(id: sessionID) {
@@ -112,13 +137,21 @@ struct SessionDetailView: View {
         .task(id: exportSignature) {
             await prepareExport()
         }
+        // Losing focus is the real end of an edit — tapping elsewhere, pulling the
+        // keyboard down, or navigating away all resign it. `onDisappear` stays as a
+        // backstop for teardowns that skip the focus change; `commitName` is a no-op
+        // when the name has not actually changed, so running twice is harmless.
+        .onChange(of: isNameFocused) { wasFocused, isFocused in
+            guard wasFocused, !isFocused else { return }
+            commitName()
+        }
         .onDisappear { commitName() }
         .confirmationDialog(
-            "Delete this session?",
+            "Delete this track?",
             isPresented: $isConfirmingDelete,
             titleVisibility: .visible
         ) {
-            Button("Delete Session", role: .destructive) {
+            Button("Delete Track", role: .destructive) {
                 Task { await deleteSession() }
             }
             Button("Cancel", role: .cancel) {}
@@ -208,3 +241,32 @@ struct SessionDetailView: View {
         dismiss()
     }
 }
+
+#if DEBUG
+private struct SessionDetailPreview: View {
+    @State private var world = PreviewWorld()
+
+    var body: some View {
+        NavigationStack {
+            if let id = world.firstSessionID {
+                SessionDetailView(sessionID: id, trackStore: world.store)
+            } else {
+                Text("No seeded track")
+            }
+        }
+        .modelContainer(world.container)
+    }
+}
+
+#Preview("Finished track") {
+    SessionDetailPreview()
+}
+
+// The session was deleted from under the screen — reachable in the app, easy to forget.
+#Preview("Unavailable") {
+    NavigationStack {
+        SessionDetailView(sessionID: UUID(), trackStore: PreviewWorld(seeds: []).store)
+    }
+    .modelContainer(PreviewWorld(seeds: []).container)
+}
+#endif
