@@ -74,9 +74,10 @@ private struct LockScreenView: View {
                 ReducedAccuracyNote()
             }
         }
-        // Modest, because the system already insets Lock Screen activity content.
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        // 14 pt on all sides is Apple's standard Lock Screen layout margin for a Live
+        // Activity. The system's own inset sits outside this, which is why the title
+        // still needs `minimumScaleFactor` to survive the narrowest widths.
+        .padding(14)
     }
 
     /// Accuracy on the left, count on the right — or just the count when there is no
