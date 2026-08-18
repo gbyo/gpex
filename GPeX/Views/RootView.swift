@@ -32,6 +32,22 @@ struct RootView: View {
                 }
             }
         }
+        .sensoryFeedback(trigger: coordinator.phase.isActive) { wasActive, isActive in
+            // Confirmation that carries when the phone is already back in a pocket. The
+            // trigger is the active/idle Bool, not `phase`, so the many moving ↔
+            // stationary ↔ unavailable transitions during a recording stay silent.
+            switch (wasActive, isActive) {
+            case (false, true):
+                return .start
+            case (true, false):
+                // A start that never got off the ground ends in `.failed`. That is a
+                // failure, not a finished recording, so it gets no stop haptic.
+                if case .failed = coordinator.phase { return nil }
+                return .stop
+            default:
+                return nil
+            }
+        }
         .onChange(of: coordinator.lastFinishedSessionID) { _, finished in
             guard let finished else { return }
             router.showSession(finished)
