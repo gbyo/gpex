@@ -21,6 +21,13 @@ For project setup and basic usage, see the [README](../README.md). For implement
 - idempotent restore behavior
 - idempotent stop behavior
 - retaining the background activity session while stationary
+- App Intents invoking the normal recording path, idempotently
+- App Intent dependency substitution and Camera Clock routing
+- the GPX `UTType`, the preserved filename, and the transferred bytes matching
+  `GPXExporter` (including clock correction and stationary bridging)
+- recording phases mapping to the correct performance state labels
+- duplicate phase transitions being ignored
+- recording completing normally with a failing or absent performance reporter
 
 The Live Activity is covered by three further suites:
 
@@ -116,6 +123,7 @@ Useful log categories are:
 - `lifecycle`
 - `persistence`
 - `export`
+- `metrics`
 
 Coordinates are never logged in release builds. The coordinate-aware debug helper is compiled out for release and marks coordinate values private in debug logging.
 
@@ -141,3 +149,24 @@ The exported GPX should add a synthetic hold point near the end of the stationar
 The synthetic point belongs only to the export. Raw stored observations must remain unchanged.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full bridge rules and edge cases.
+
+## System-integration checks that need a physical iPhone
+
+The unit and UI suites cover everything GPeX itself decides. These depend on system
+behavior the simulator does not reproduce:
+
+1. **Intent from a cold start.** Say "Start recording with GPeX" with the app not
+   running, on a device where location has never been granted. GPeX should come to the
+   foreground, show the location prompt, and land on the active recording screen.
+   "Open Camera Clock in GPeX" should land on the clock.
+2. **Shortcuts and Spotlight.** Confirm both shortcuts appear in the Shortcuts app
+   without being added manually, and that the phrases are recognized.
+3. **Share sheet.** Export a session and check that AirDrop, Files and Mail each receive
+   a `.gpx` document under the exporter's filename, and that the received bytes match
+   what the app shows. Only a real share sheet exercises the file representation.
+4. **StateReporting on iOS 26.** `StateReporting.framework` is weak-linked, so an iOS 26
+   device must launch and record normally. Verify on an actual iOS 26 device, not just
+   by building.
+5. **MetricKit delivery.** Reports arrive roughly once a day and only on device. Filter
+   Console to the `metrics` category and confirm summaries appear, that they contain no
+   coordinates or session names, and that the local archive stays capped.

@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // session and the live-update stream for any recording that is still open.
         AppServices.shared.coordinator.restoreInterruptedRecordingIfNeeded()
 
+        // Only afterwards. App Intents and MetricKit are both strictly secondary to
+        // rejoining an outstanding recording, and neither may delay it.
+        AppServices.shared.startProcessServices()
+
         return true
     }
 }

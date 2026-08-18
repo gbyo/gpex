@@ -193,11 +193,109 @@ Resolution is in seconds. `ClockCorrection` is the single place where the sign i
 
 The **Camera Clock** screen shows a large local clock to tenths of a second, the local date, UTC time, and the current UTC offset. A photographer can photograph that screen before an event and compare it with the camera clock to measure drift. The screen keeps the display awake while visible and restores normal idle behavior when dismissed.
 
+## System integrations
+
+Four system integrations sit outside the recording engine. None of them is allowed to
+become a second source of truth: `RecordingCoordinator` still owns recording state,
+`TrackStore` still owns persistence, and `GPXExporter` still owns the exported bytes.
+
+### App Intents
+
+Two intents, no parameters, no Stop intent yet:
+
+- `StartRecordingIntent` calls `RecordingCoordinator.startRecording()` — the same path
+  the Start button takes. Idempotence is therefore the coordinator's, not the intent's:
+  idle starts, and starting, recording or stopping all decline to create a second
+  session. An intent that filtered on state itself would be a second state machine.
+- `OpenCameraClockIntent` navigates to the existing `CameraClockView`.
+
+Both set `openAppWhenRun`. For the Camera Clock that is obvious — there is nothing to
+show otherwise. For Start it is a requirement: creating the `CLServiceSession` is what
+asks for When In Use and for temporary full accuracy, and those are foreground
+questions with UI attached.
+
+Intents reach the app through one narrow dependency:
+
+```swift
+protocol GPeXIntentActions: Sendable {
+    @MainActor func startRecording() async
+    @MainActor func openCameraClock()
+}
+```
+
+`AppServices` registers the production implementation with `AppDependencyManager` at
+launch. `AppDependencyManager` only resolves inside the system's perform flow, so tests
+assign `intent.actions` directly — which is possible precisely because there is nothing
+else for an intent to reach.
+
+### GPX export as a Transferable
+
+```text
+TrackStore → session snapshot + points → GPXExporter → GPX string
+           → GPXExportItem → ShareLink
+```
+
+`GPXExportItem` is a carrier and nothing more. It holds the string `GPXExporter`
+produced and the filename `GPXExporter.filename(for:)` chose, and exposes them through
+a `FileRepresentation` for `UTType.gpx`, because a `.gpx` is a document rather than a
+blob. `SessionDetailView` builds the item ahead of the tap so the row can say "no usable
+locations" instead of failing after the share sheet is already open; the bytes only
+become a file at the instant the system asks for one.
+
+### MetricKit
+
+One `PerformanceMonitor` for the life of the process, owned by `AppServices` and started
+from `didFinishLaunchingWithOptions` *after* recording recovery. It observes and never
+acts: nothing it does can influence a recording, and nothing in recording waits on it.
+
+- **iOS 27** uses `MetricManager`, consuming `metricReports` and `diagnosticReports` as
+  async sequences. Exactly one manager exists per process. The recording domain is
+  enabled on it, so hangs and terminations can be attributed to what the app was doing.
+- **iOS 26** uses `MXMetricManager` and `MXMetricManagerSubscriber`. All of it lives in
+  `LegacyMetricKitReceiver`; when the deployment target reaches iOS 27 that file is
+  deleted and nothing else changes.
+
+Reports are summarised to `Log.metrics` and, at most, five of each kind are kept as JSON
+in Caches for a developer with the device in hand. Nothing is uploaded, and there is no
+analytics SDK, backend or networking of any kind.
+
+### StateReporting
+
+On iOS 27 and later, GPeX describes its recording state to the system under the stable
+domain `com.gbyo.gpex.recording`. The domain is deliberately not derived from
+`PRODUCT_BUNDLE_IDENTIFIER`: `com.example.GPeX` is a placeholder that will change before
+shipping, and a domain that changed with it would split the historical data in two.
+
+The reported vocabulary is fixed and small, and carries no metadata at all — no session
+IDs, coordinates, filenames or accuracy values:
+
+```text
+waitingForAuthorization → authorization
+acquiringLocation       → acquiring
+moving                  → moving
+stationary              → stationary
+temporarilyUnavailable  → unavailable
+stopping                → stopping
+failed                  → failed
+idle                    → no active state
+```
+
+Every failure reports the same label on purpose: a `RecordingProblem` can carry an
+arbitrary storage-error message, and that must not become high-cardinality metadata.
+
+Reporting happens in exactly one place. `RecordingCoordinator.setState(_:)` is the only
+writer of `state`, so every real transition — start, restore, diagnostics, activity
+updates, stop, failure, recovery — passes through a single
+`RecordingPerformanceReporting.transition(to:)` call, and a phase that has not actually
+changed is not reported at all. On iOS 26 the implementation is a no-op.
+
 ## Component overview
 
 ```text
 GPeXApp / AppDelegate       @UIApplicationDelegateAdaptor; restores on launch
 AppServices                 composition root
+AppRouter                   @Observable navigation path, so an App Intent can
+                            reach a screen from outside the view hierarchy
 
 RecordingCoordinator        @MainActor @Observable; owns the state machine,
                             retained CL sessions, and stream tasks
@@ -213,7 +311,23 @@ TrackStore                  @ModelActor; all SwiftData access
 TrackSession / TrackPoint   models; snapshots cross the actor boundary
 
 GPXExporter                 pure export transformation
-GPXTemporaryFile            temporary share file, purged at launch
+GPXExportItem               Transferable carrier for ShareLink; generates
+                            nothing, carries the exporter's bytes and filename
+UTType.gpx                  imported com.topografix.gpx, declared in Info.plist
+GPXTemporaryFile            staging for the file representation, purged at launch
+
+GPeXIntentActions           the only surface App Intents touch
+  AppIntentActions          production implementation over coordinator + router
+StartRecordingIntent        calls RecordingCoordinator.startRecording()
+OpenCameraClockIntent       routes to the existing Camera Clock screen
+GPeXShortcuts               AppShortcutsProvider phrases; no parameters
+
+PerformanceMonitor          one per process; MetricManager on iOS 27,
+                            MXMetricManager on iOS 26. Observes only.
+LegacyMetricKitReceiver     the whole deprecated MetricKit surface, isolated
+PerformanceReportArchive    bounded local report copies in Caches
+RecordingPerformanceReporting  seam from the state machine to StateReporting
+  StateReportingRecordingReporter (iOS 27) / NoOpRecordingPerformanceReporter
 
 RecordingLiveSnapshot       flat value the coordinator hands the Live Activity
 RecordingLiveActivityManager  start / update / reconcile / end, nothing else
@@ -299,7 +413,7 @@ One deliberate exception: if the user *swiped the activity away* while this proc
 
 ### Interaction
 
-Tapping opens `gpex://recording`, which pops `RootView`'s navigation to the root; the root already shows the active recording whenever one is running, so this needs no routing machinery. There is deliberately **no Stop button**: ending a multi-hour track by brushing a Lock Screen control would be costly, and an App Intent that mutated recording state would open a second route into the state machine.
+Tapping opens `gpex://recording`, which calls `AppRouter.showActiveRecording()` — the same thing `StartRecordingIntent` does, because it is the same destination. The root already shows the active recording whenever one is running, so this needs nothing beyond popping to it. There is deliberately **no Stop button**: ending a multi-hour track by brushing a Lock Screen control would be costly, and an App Intent that mutated recording state would open a second route into the state machine.
 
 ## Info.plist and capabilities
 
@@ -311,6 +425,9 @@ GPeX uses:
 - `NSSupportsLiveActivities` → `true`
 - `CFBundleURLTypes` → scheme `gpex`, the Live Activity's tap target
 - `ITSAppUsesNonExemptEncryption` → `false`
+- `UTImportedTypeDeclarations` → `com.topografix.gpx`, conforming to `public.xml`,
+  with `gpx` as the filename extension. Imported rather than exported: GPX is an
+  open interchange format GPeX writes, not a GPeX format.
 
 There is no `NSLocationAlwaysAndWhenInUseUsageDescription` because Always authorization is never requested.
 
