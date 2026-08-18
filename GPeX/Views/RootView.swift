@@ -35,7 +35,7 @@ struct RootView: View {
         }
         .sensoryFeedback(trigger: coordinator.phase.isActive) { wasActive, isActive in
             // Confirmation that carries when the phone is already back in a pocket. The
-            // trigger is the active/idle Bool, not `phase`, so the many moving ↔
+            // trigger is the active/idle Bool, not `phase`, so the many tracking ↔
             // stationary ↔ unavailable transitions during a recording stay silent.
             switch (wasActive, isActive) {
             case (false, true):
@@ -95,6 +95,6 @@ private struct RootPreview: View {
 }
 
 #Preview("Recording") {
-    RootPreview(stage: .moving)
+    RootPreview(stage: .tracking)
 }
 #endif

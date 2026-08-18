@@ -34,7 +34,7 @@ struct RecordingCoordinatorTests {
         try await waitUntil("acquiring") { harness.coordinator.phase == .acquiringLocation }
 
         harness.deliver(sample(1))
-        try await waitUntil("recording") { harness.coordinator.phase == .moving }
+        try await waitUntil("recording") { harness.coordinator.phase == .tracking }
         #expect(harness.coordinator.recordedPointCount == 1)
     }
 
@@ -63,14 +63,14 @@ struct RecordingCoordinatorTests {
         #expect(!snapshot.name.isEmpty)
     }
 
-    // MARK: - Stationary and moving
+    // MARK: - Tracking and stationary
 
     @Test("Stationary is reported as recording, never as paused")
     func stationaryIsStillRecording() async throws {
         let harness = try RecordingHarness()
         await harness.coordinator.startRecording()
         harness.deliver(sample(1))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
 
         harness.deliver(sample(2, stationary: true))
         try await waitUntil("stationary") { harness.coordinator.phase == .stationary }
@@ -86,7 +86,7 @@ struct RecordingCoordinatorTests {
         let harness = try RecordingHarness()
         await harness.coordinator.startRecording()
         harness.deliver(sample(1))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
 
         harness.deliver(sample(2, stationary: true))
         try await waitUntil("stationary") { harness.coordinator.phase == .stationary }
@@ -96,7 +96,7 @@ struct RecordingCoordinatorTests {
 
         // And it resumes by itself when movement returns, with no new stream.
         harness.deliver(sample(700, positionB))
-        try await waitUntil("resumed") { harness.coordinator.phase == .moving }
+        try await waitUntil("resumed") { harness.coordinator.phase == .tracking }
         #expect(harness.provider.liveUpdateStreamsCreated == 1)
         #expect(harness.provider.sessionsOutstanding == 1)
     }
@@ -123,7 +123,7 @@ struct RecordingCoordinatorTests {
         let harness = try RecordingHarness()
         await harness.coordinator.startRecording()
         harness.deliver(sample(1))
-        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+        try await waitUntil("tracking") { harness.coordinator.phase == .tracking }
 
         var event = LocationUpdateEvent(sample: nil)
         event.locationUnavailable = true
@@ -450,7 +450,7 @@ struct RecordingCoordinatorTests {
 
         try await waitUntil("reduced accuracy") { harness.coordinator.isPreciseLocationDenied }
         harness.deliver(sample(1, accuracy: 800))
-        try await waitUntil("still recording") { harness.coordinator.phase == .moving }
+        try await waitUntil("still recording") { harness.coordinator.phase == .tracking }
 
         #expect(harness.coordinator.recordedPointCount == 1)
         #expect(harness.provider.sessionsOutstanding == 1)

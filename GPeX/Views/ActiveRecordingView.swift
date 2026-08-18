@@ -25,6 +25,7 @@ struct ActiveRecordingView: View {
                         statusPill
                         elapsedTime
                         statistics
+                        cadence
                         notices
                     }
                 }
@@ -142,6 +143,21 @@ struct ActiveRecordingView: View {
         }
     }
 
+    // MARK: - Cadence
+
+    /// The interval this recording is running at.
+    ///
+    /// Stated rather than adjustable: a session half recorded at one cadence should
+    /// finish at that cadence, and a control here would be one more thing to fumble
+    /// mid-event. It is a caption, not a card, because it does not change.
+    private var cadence: some View {
+        Text(coordinator.saveInterval.cadenceDescription)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .accessibilityIdentifier("saveIntervalCadence")
+    }
+
     // MARK: - Things the photographer can act on
 
     @ViewBuilder
@@ -189,8 +205,8 @@ struct ActiveRecordingView: View {
 }
 
 #if DEBUG
-#Preview("Moving") {
-    RecordingPreviewHost(stage: .moving) { coordinator in
+#Preview("Tracking") {
+    RecordingPreviewHost(stage: .tracking) { coordinator in
         PreviewNavigation(title: "GPeX") {
             ActiveRecordingView(coordinator: coordinator)
         }
@@ -239,8 +255,8 @@ struct ActiveRecordingView: View {
 
 // The screen a photographer reads at arm's length in bright sun, at the largest
 // accessibility text size. If the timer truncates here, it truncates in the field.
-#Preview("Moving · AX5") {
-    RecordingPreviewHost(stage: .moving) { coordinator in
+#Preview("Tracking · AX5") {
+    RecordingPreviewHost(stage: .tracking) { coordinator in
         PreviewNavigation(title: "GPeX") {
             ActiveRecordingView(coordinator: coordinator)
         }

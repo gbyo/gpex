@@ -15,7 +15,7 @@ extension RecordingPhase {
         case .idle: "location"
         case .waitingForAuthorization: "lock.shield"
         case .acquiringLocation: "location.magnifyingglass"
-        case .moving: "location.fill"
+        case .tracking: "location.fill"
         case .stationary: "pause.circle.fill"
         case .temporarilyUnavailable: "location.slash"
         case .stopping: "stop.circle"
@@ -30,7 +30,7 @@ extension RecordingPhase {
     /// and colouring it amber would suggest the recording had a problem.
     var tint: Color {
         switch self {
-        case .moving: .green
+        case .tracking: .green
         case .stationary: .secondary
         case .acquiringLocation, .waitingForAuthorization: .accentColor
         case .temporarilyUnavailable: .orange
@@ -43,7 +43,7 @@ extension RecordingPhase {
     /// move, so motion means "something is happening" rather than decoration.
     var symbolPulses: Bool {
         switch self {
-        case .moving, .acquiringLocation: true
+        case .tracking, .acquiringLocation: true
         case .idle, .waitingForAuthorization, .stationary, .temporarilyUnavailable,
              .stopping, .failed: false
         }

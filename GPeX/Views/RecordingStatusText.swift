@@ -10,7 +10,7 @@ extension RecordingPhase {
         case .idle: "Ready to record"
         case .waitingForAuthorization: "Waiting for permission…"
         case .acquiringLocation: "Acquiring location…"
-        case .moving: "Recording"
+        case .tracking: "Recording"
         case .stationary: "Recording"
         case .temporarilyUnavailable: "Recording"
         case .stopping: "Stopping…"
@@ -20,16 +20,20 @@ extension RecordingPhase {
 
     /// The single line a status indicator should carry.
     ///
-    /// Prefers the activity, because `headline` flattens moving, stationary and
+    /// Prefers the activity, because `headline` flattens tracking, stationary and
     /// unavailable into the same word — and once an elapsed timer is running beside
     /// it, "Recording" is the part the reader already knows. Falls back to the
     /// headline for the states that have no activity: startup, stopping, failure.
     var statusTitle: String { activityTitle ?? headline }
 
-    /// The activity line: `Moving`, `Stationary`, or why nothing is arriving.
+    /// The activity line: what GPeX is doing, or why nothing is arriving.
+    ///
+    /// Never "Moving". GPeX has no way to know whether the photographer is walking —
+    /// it has no Core Motion and reads no speed thresholds — so the ordinary state says
+    /// only what is true: locations are being tracked.
     var activityTitle: String? {
         switch self {
-        case .moving: "Moving"
+        case .tracking: "Tracking location"
         case .stationary: "Stationary"
         case .temporarilyUnavailable: "Location unavailable"
         case .idle, .waitingForAuthorization, .acquiringLocation, .stopping, .failed: nil
@@ -39,8 +43,8 @@ extension RecordingPhase {
     var activityDetail: String? {
         switch self {
         case .stationary:
-            // Deliberately not "Paused": the recording is still running, and it will
-            // pick up again by itself as soon as the photographer moves.
+            // Deliberately not "Paused": the recording is still running, and it picks up
+            // again by itself as soon as Core Location starts delivering again.
             "Saving battery"
         case .temporarilyUnavailable:
             "Recording continues. Positions resume when a fix is available."
@@ -48,7 +52,7 @@ extension RecordingPhase {
             "Allow location access to record this session."
         case .acquiringLocation:
             "The session start time is already saved."
-        case .idle, .moving, .stopping, .failed:
+        case .idle, .tracking, .stopping, .failed:
             nil
         }
     }

@@ -161,6 +161,8 @@ struct HomeView: View {
 
     private var startBar: some View {
         VStack(spacing: 8) {
+            saveIntervalPicker
+
             Button {
                 Task { await coordinator.startRecording() }
             } label: {
@@ -179,6 +181,45 @@ struct HomeView: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 8)
+    }
+
+    /// How often the next recording writes a location down.
+    ///
+    /// A menu picker rather than a segmented control: four options with words on them do
+    /// not fit across an iPhone at accessibility text sizes, and the choice is made once
+    /// and then left alone. It sits above Start because it applies to the recording the
+    /// photographer is about to begin — a running recording keeps the cadence it started
+    /// with, and this screen is not on display while one is running.
+    private var saveIntervalPicker: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // Spelled out beside the menu rather than left to the picker's own label: a
+            // menu picker outside a List shows only its selected value, and "30 seconds"
+            // on its own says nothing about what it measures.
+            Text("Save a location every")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            Spacer(minLength: 8)
+
+            Picker("Save a location every", selection: saveIntervalBinding) {
+                ForEach(LocationSaveInterval.allCases) { interval in
+                    Text(interval.pickerLabel).tag(interval)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .accessibilityLabel("Save a location every")
+            .accessibilityHint("Sets the shortest time between saved locations. It does not change how often GPeX checks your position.")
+            .accessibilityIdentifier("saveInterval")
+        }
+    }
+
+    private var saveIntervalBinding: Binding<LocationSaveInterval> {
+        Binding(
+            get: { coordinator.preferredSaveInterval },
+            set: { coordinator.setPreferredSaveInterval($0) }
+        )
     }
 
     // MARK: - Data

@@ -175,9 +175,9 @@ nonisolated final class TestSessionHandles: LocationSessionHandles {
 // MARK: - UI test script
 
 extension TestLocationUpdatesProvider {
-    /// The sequence a UI-test launch replays: a couple of moving fixes near a field,
-    /// then stationary. Enough for the active-recording screen to show a real accuracy
-    /// and point count without waiting on hardware.
+    /// The sequence a UI-test launch replays: a couple of ordinary fixes near a field,
+    /// then an explicitly stationary one. Enough for the active-recording screen to show
+    /// a real accuracy and point count without waiting on hardware.
     static func uiTestingScript() -> [ScriptedLocationEvent] {
         let base = Date()
         func sample(_ offset: TimeInterval, _ latitude: Double, _ longitude: Double, stationary: Bool) -> LocationSample {

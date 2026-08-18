@@ -74,7 +74,7 @@ extension RecordingLiveSnapshot {
     static func fixture(
         sessionID: UUID = UUID(),
         startedAt: Date = testBase,
-        phase: RecordingPhase = .moving,
+        phase: RecordingPhase = .tracking,
         horizontalAccuracy: Double? = 7,
         pointCount: Int = 38,
         reducedAccuracy: Bool = false

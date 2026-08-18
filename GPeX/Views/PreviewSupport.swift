@@ -59,6 +59,7 @@ struct PreviewWorld {
             trackStore: store,
             markerStore: RecoveryMarkerStore(defaults: defaults),
             provider: provider,
+            preferences: RecordingPreferences(defaults: defaults),
             // Previews never restore: a canvas that resumed a recording on every
             // redraw would be unusable.
             allowsRestore: false
@@ -113,7 +114,7 @@ struct RecordingPreviewHost<Content: View>: View {
     enum Stage {
         case waitingForAuthorization
         case acquiring
-        case moving
+        case tracking
         case stationary
         case unavailable
         case reducedAccuracy
@@ -142,7 +143,7 @@ struct RecordingPreviewHost<Content: View>: View {
         await settle()
 
         switch stage {
-        case .waitingForAuthorization, .acquiring, .moving:
+        case .waitingForAuthorization, .acquiring, .tracking:
             break
 
         case .stationary:

@@ -41,12 +41,17 @@ nonisolated struct CoreLocationUpdatesProvider: LocationUpdatesProvider {
     /// The purpose key in `NSLocationTemporaryUsageDescriptionDictionary`.
     static let fullAccuracyPurposeKey = "GPeXTracking"
 
-    /// The one place the live-update configuration is chosen.
+    /// The one place the live-update configuration is chosen, and it chooses `.default`.
     ///
-    /// `.default` lets Core Location manage power for a device that spends most of a
-    /// game standing still. Field testing may show that short sideline relocations are
-    /// detected too slowly, in which case this single property is the thing to change
-    /// to `.fitness` and re-measure. It is deliberately not a user setting.
+    /// `.default` hands power management to Core Location, which is the whole strategy:
+    /// it decides which hardware to run, how often to fix a position, and when to stop
+    /// delivering because the device has not moved. GPeX adds nothing on top — no Core
+    /// Motion, no timers, no polling, no manual stop and start — because every one of
+    /// those would be a second, worse power manager competing with the first.
+    ///
+    /// How often GPeX *saves* a location is a separate question, answered after delivery
+    /// by `SavedLocationGate`. That setting never reaches this configuration: it cannot
+    /// make Core Location produce fixes faster, and it is not meant to.
     ///
     /// Computed rather than stored because `LiveConfiguration` is not `Sendable`.
     static var liveConfiguration: CLLocationUpdate.LiveConfiguration { .default }

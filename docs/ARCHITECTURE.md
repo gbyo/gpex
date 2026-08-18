@@ -23,7 +23,45 @@ GPeX therefore does not use:
 - `BGTaskScheduler`
 - Core Motion
 
-The live configuration is chosen in one place, `CoreLocationUpdatesProvider.liveConfiguration`, so field testing can compare `.default` and `.fitness` without spreading configuration through the app. It currently uses `.default` and is deliberately not exposed as a user setting.
+The live configuration is chosen in one place, `CoreLocationUpdatesProvider.liveConfiguration`, and it is `.default`. That hands power management to Core Location, which is the whole strategy: it decides which hardware to run, how often to fix a position, and when to stop delivering because the device has not moved. It is deliberately not exposed as a user setting.
+
+Exactly one `CLLocationUpdate.liveUpdates(.default)` stream, one `CLServiceSession` and one `CLBackgroundActivitySession` exist per recording. `RecordingCoordinator.beginStreams(for:)` refuses to create a second stream, `TestLocationUpdatesProvider` counts both streams and sessions, and the invariant is asserted directly in `RecordingCadenceTests.exactlyOneStreamPerRecording`.
+
+### No activity classification
+
+GPeX makes **no claim about whether the photographer is moving.** It has no Core Motion, no speed thresholds and no timers, so an activity classification would be a guess presented as a fact.
+
+There are three running states, and only one of them is inferred from anything:
+
+| State | When |
+|---|---|
+| `tracking` | the ordinary state — Core Location has not said anything more specific |
+| `stationary` | Core Location set `stationary` on the update itself |
+| `temporarilyUnavailable` | Core Location set `locationUnavailable` |
+
+`stationary` therefore requires an explicit report, and it ends the moment Core Location delivers a non-stationary location again — at which point the recording returns to plain `tracking`, not to anything called "Moving". Nothing stops or restarts a session to make that happen; Core Location resumes delivery on its own.
+
+## The saved-location interval
+
+How often Core Location *delivers* is Apple's decision. How often GPeX *saves* is the photographer's, and the two are entirely separate.
+
+`LocationSaveInterval` offers 10 s, 20 s, 30 s (the default and the one marked recommended) and 1 minute. It is a **minimum persistence interval, not a GPS polling interval**: nothing about it reaches `liveConfiguration`, requests a location, or schedules anything. Choosing one minute costs no more battery than choosing ten seconds — it simply keeps fewer of the fixes Core Location was going to send anyway.
+
+`SavedLocationGate` is the whole implementation, and it is a pure value with no clock of its own. It is handed a fix that already passed the coordinator's validation and answers one question: save it, or let it go.
+
+- The **first fix** of a recording is always saved, so a session is never empty while it waits.
+- Otherwise the interval is a floor: fixes arriving inside it are coalesced.
+- Four things are more informative than a stopwatch and get in early:
+  - **meaningful displacement** — further apart than the two fixes' combined horizontal accuracies, with a 10 m floor. A fixed `distance > 10` rule would call 55 m between two ±50 m fixes movement, which is well inside what standing still produces; the same 55 m between two ±8 m fixes really is a walk down the touchline.
+  - **materially improved accuracy** — at least halved *and* at least 5 m tighter. Both conditions are needed: the ratio alone fires on 2 m → 0.9 m, the absolute figure alone on 800 m → 790 m.
+  - **explicit stationary information** — the arrival of `stationary`, so becoming stationary is always recorded. Repeats of it obey the interval again, so an hour parked in one place is not an hour of identical rows.
+  - **the first usable fix after stationary** — the moment the interval would otherwise hide for a whole minute.
+
+Only a write that actually succeeded advances the gate, so a failed append does not make the next fix look early.
+
+The active interval is fixed for a recording's lifetime, is written into the recovery marker, and is restored from it — so an interrupted recording resumes at the cadence it was interrupted at rather than at today's preference. A marker written before the setting existed is honoured rather than discarded, and fills in 30 seconds.
+
+The preference itself lives in `RecordingPreferences` (`UserDefaults`, stored as a plain number of seconds) and is read in exactly one place: `RecordingCoordinator.startRecording()`. Every way in — a tap, an App Intent, a Shortcut — arrives at that line, which is what makes App Intents use the saved preference without knowing it exists.
 
 ## Background activity sessions
 
@@ -31,7 +69,7 @@ A `CLBackgroundActivitySession` is created when the user starts a recording and 
 
 It is intentionally **not** invalidated when `stationary == true`.
 
-That is important because automatic resume is central to the design. Ending the background session during a stationary period could prevent the app from receiving the update that says the photographer has started moving again.
+That is important because automatic resume is central to the design. Ending the background session during a stationary period could prevent the app from receiving the update that says the device is no longer stationary.
 
 `RecordingCoordinatorTests.stationaryKeepsSessionsAlive` asserts this behavior directly.
 
@@ -160,8 +198,10 @@ The move becomes a near-step rather than a fabricated ten-minute drift.
 - **When a bridge is added:** only when the previous point is stationary, the gap is at least 15 seconds, and the resumed fix is at least 15 meters away.
 - **Unknown gaps:** a gap without a stationary report might represent a tunnel or dropped fix. GPeX preserves that gap rather than assuming the photographer stood still.
 - **Multiple stationary periods:** each period can receive its own bridge.
-- **Session start anchor:** if the first good fix arrives within 30 seconds of Start and shows no evidence of movement, its coordinate can be duplicated at `startedAt` so photos taken immediately after Start have coverage. A much later first fix, or one observed while moving, is not backdated.
-- **Session end anchor:** if the photographer is stationary when Stop is tapped, the last stationary coordinate can extend to `endedAt`. A stale moving fix is never projected forward.
+- **Session start anchor:** if the first good fix arrives within 30 seconds of Start and shows no evidence of movement, its coordinate can be duplicated at `startedAt` so photos taken immediately after Start have coverage. A much later first fix, or one whose reported speed shows the photographer was walking, is not backdated.
+- **Session end anchor:** if the photographer is stationary when Stop is tapped, the last stationary coordinate can extend to `endedAt`. A stale non-stationary fix is never projected forward.
+
+These two anchors are the only places anything in GPeX consults a reported speed, and they are export decisions about whether a coordinate may be projected onto a timestamp — not a status the app displays. The recording itself makes no claim about whether the photographer is moving.
 - **Ordering:** generated points are sorted by effective timestamp, floored to whole seconds, and filtered to be strictly increasing. A real observation wins when a synthetic point lands in the same second. Two real fixes in one second collapse to the more accurate fix while preserving a stationary report from either one.
 
 The exporter emits GPX 1.1 with UTC ISO 8601 timestamps built from a fixed Gregorian calendar, coordinates at seven decimal places using locale-independent formatting, `<ele>` only when valid altitude exists, XML-escaped names, and no proprietary extensions.
@@ -272,7 +312,7 @@ IDs, coordinates, filenames or accuracy values:
 ```text
 waitingForAuthorization → authorization
 acquiringLocation       → acquiring
-moving                  → moving
+tracking                → tracking
 stationary              → stationary
 temporarilyUnavailable  → unavailable
 stopping                → stopping
@@ -390,19 +430,21 @@ Two rendering details were found on a real Lock Screen rather than in a preview,
 
 ### Statuses
 
-Six presentation states, a lossy projection of `RecordingPhase` chosen for a two-second glance. Core Location vocabulary never reaches them.
+Six presentation states, a lossy projection of `RecordingPhase` chosen for a two-second glance. Core Location vocabulary never reaches them, and neither does any claim about what the photographer is doing.
 
 | `RecordingPhase` | Lock Screen |
 |---|---|
 | `waitingForAuthorization` | Waiting for Location Access |
 | `acquiringLocation` | Acquiring Location |
-| `moving` | Moving |
+| `tracking` | Recording — *Tracking location* |
 | `stationary` | Stationary — *Saving battery* |
 | `temporarilyUnavailable` | Location Temporarily Unavailable |
 | `stopping` | Finishing Recording |
 | `idle`, `failed` | no activity — it is ended, not relabelled |
 
 **Stationary never says "Paused."** The recording is still running and resumes by itself, so calling it paused would invite the user to stop and restart — the one reaction that would actually lose data.
+
+**And nothing ever says "Moving."** GPeX has no Core Motion, no speed thresholds and no timers, so an activity classification would be a guess dressed up as a fact. The ordinary state says what is actually true — locations are being tracked — and `Stationary` appears only when Core Location sets `stationary` on an update itself.
 
 ### Privacy
 

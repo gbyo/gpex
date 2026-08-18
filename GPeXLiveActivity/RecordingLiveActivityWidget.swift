@@ -249,11 +249,11 @@ extension RecordingActivityAttributes {
 
 extension RecordingActivityAttributes.ContentState {
     static let acquiring = Self(status: .acquiringLocation)
-    static let moving = Self(status: .moving, horizontalAccuracy: 6, pointCount: 41)
+    static let tracking = Self(status: .tracking, horizontalAccuracy: 6, pointCount: 41)
     static let stationary = Self(status: .stationary, horizontalAccuracy: 7, pointCount: 38)
     static let unavailable = Self(status: .temporarilyUnavailable, pointCount: 38)
     static let reduced = Self(
-        status: .moving,
+        status: .tracking,
         horizontalAccuracy: 65,
         pointCount: 22,
         reducedAccuracy: true
@@ -264,7 +264,7 @@ extension RecordingActivityAttributes.ContentState {
     RecordingLiveActivityWidget()
 } contentStates: {
     RecordingActivityAttributes.ContentState.acquiring
-    RecordingActivityAttributes.ContentState.moving
+    RecordingActivityAttributes.ContentState.tracking
     RecordingActivityAttributes.ContentState.stationary
     RecordingActivityAttributes.ContentState.unavailable
     RecordingActivityAttributes.ContentState.reduced
@@ -274,7 +274,7 @@ extension RecordingActivityAttributes.ContentState {
     RecordingLiveActivityWidget()
 } contentStates: {
     RecordingActivityAttributes.ContentState.acquiring
-    RecordingActivityAttributes.ContentState.moving
+    RecordingActivityAttributes.ContentState.tracking
     RecordingActivityAttributes.ContentState.stationary
     RecordingActivityAttributes.ContentState.unavailable
     RecordingActivityAttributes.ContentState.reduced
@@ -284,7 +284,7 @@ extension RecordingActivityAttributes.ContentState {
     RecordingLiveActivityWidget()
 } contentStates: {
     RecordingActivityAttributes.ContentState.acquiring
-    RecordingActivityAttributes.ContentState.moving
+    RecordingActivityAttributes.ContentState.tracking
     RecordingActivityAttributes.ContentState.stationary
     RecordingActivityAttributes.ContentState.unavailable
     RecordingActivityAttributes.ContentState.reduced
@@ -293,7 +293,7 @@ extension RecordingActivityAttributes.ContentState {
 #Preview("Island Minimal", as: .dynamicIsland(.minimal), using: RecordingActivityAttributes.preview) {
     RecordingLiveActivityWidget()
 } contentStates: {
-    RecordingActivityAttributes.ContentState.moving
+    RecordingActivityAttributes.ContentState.tracking
     RecordingActivityAttributes.ContentState.stationary
 }
 #endif
