@@ -166,6 +166,139 @@ struct RecordingCoordinatorTests {
         #expect(harness.coordinator.recordedPointCount == 2)
     }
 
+    // MARK: - Persistence policy (integration)
+
+    /// One metre of latitude, for writing jitter as a distance.
+    private static let metre = 1.0 / 111_320.0
+
+    private static func jittered(_ metresNorth: Double) -> (latitude: Double, longitude: Double) {
+        (latitude: positionA.latitude + metresNorth * metre, longitude: positionA.longitude)
+    }
+
+    @Test("A minute of standing still does not become sixty track points")
+    func jitterDoesNotAccumulatePoints() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA))
+        try await waitUntil("first fix") { harness.coordinator.recordedPointCount == 1 }
+
+        // A phone lying on a camera bag: a fix a second, all within a couple of metres.
+        for second in 1...60 {
+            let drift = Double((second % 5) - 2) * 1.5
+            harness.deliver(sample(Double(second), Self.jittered(drift), accuracy: 8))
+        }
+        try await Task.sleep(for: .milliseconds(150))
+
+        let sessionID = try #require(harness.coordinator.state.activeRecording?.sessionID)
+        let stored = try await harness.store.pointCount(sessionID: sessionID)
+        // Bounded and useful, not one per delivery. The count itself is not the
+        // contract — "nothing like 1 Hz" is.
+        #expect(stored < 10)
+        #expect(stored >= 1)
+        #expect(harness.coordinator.recordedPointCount == stored)
+    }
+
+    @Test("Small coordinate noise does not tick the visible point count every second")
+    func noiseDoesNotChurnTheCount() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA))
+        try await waitUntil("first fix") { harness.coordinator.recordedPointCount == 1 }
+
+        for second in 1...5 {
+            harness.deliver(sample(Double(second), Self.jittered(1.5), accuracy: 8))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(harness.coordinator.recordedPointCount == 1)
+        // And the exposed sample still describes what was actually written down.
+        #expect(harness.coordinator.latestSample?.timestamp == testBase)
+    }
+
+    @Test("A short sideline relocation is recorded, not filtered away")
+    func shortRelocationIsRecorded() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA))
+        try await waitUntil("first fix") { harness.coordinator.recordedPointCount == 1 }
+
+        for second in 1...4 { harness.deliver(sample(Double(second), Self.jittered(1), accuracy: 8)) }
+        // Fifteen metres down the touchline.
+        harness.deliver(sample(5, Self.jittered(15), accuracy: 8))
+
+        try await waitUntil("the move was captured") { harness.coordinator.recordedPointCount == 2 }
+        let sessionID = try #require(harness.coordinator.state.activeRecording?.sessionID)
+        let samples = try await harness.store.samples(sessionID: sessionID)
+        #expect(samples.last?.timestamp == testBase.addingTimeInterval(5))
+    }
+
+    @Test("A materially better fix in the same place is kept")
+    func betterAccuracyIsPersisted() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA, accuracy: 40))
+        try await waitUntil("first fix") { harness.coordinator.recordedPointCount == 1 }
+
+        harness.deliver(sample(2, positionA, accuracy: 8))
+        try await waitUntil("the better fix") { harness.coordinator.recordedPointCount == 2 }
+
+        let sessionID = try #require(harness.coordinator.state.activeRecording?.sessionID)
+        let samples = try await harness.store.samples(sessionID: sessionID)
+        #expect(samples.last?.horizontalAccuracy == 8)
+    }
+
+    @Test("The first fix after a stationary period is kept even a few metres away")
+    func resumptionAfterStationaryIsKept() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA))
+        harness.deliver(sample(5, positionA, stationary: true))
+        try await waitUntil("stationary recorded") { harness.coordinator.recordedPointCount == 2 }
+
+        // Ten minutes later Core Location resumes, three metres away.
+        harness.deliver(sample(600, Self.jittered(3), accuracy: 8))
+        try await waitUntil("resumed fix") { harness.coordinator.recordedPointCount == 3 }
+        #expect(harness.coordinator.phase == .moving)
+    }
+
+    @Test("A resumption after a coordinate-less stationary report is also kept")
+    func resumptionAfterStationaryWithoutLocation() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA))
+        try await waitUntil("first fix") { harness.coordinator.recordedPointCount == 1 }
+
+        harness.provider.emitStationaryWithoutLocation()
+        try await waitUntil("stationary") { harness.coordinator.phase == .stationary }
+
+        harness.clock.advance(600)
+        harness.deliver(sample(600, Self.jittered(3), accuracy: 8))
+        try await waitUntil("resumed fix") { harness.coordinator.recordedPointCount == 2 }
+    }
+
+    @Test("A redundant coordinate still carries its diagnostics through")
+    func redundantSampleStillUpdatesActivity() async throws {
+        let harness = try RecordingHarness()
+        await harness.coordinator.startRecording()
+        harness.deliver(sample(0, positionA))
+        try await waitUntil("moving") { harness.coordinator.phase == .moving }
+
+        // Same place, so nothing is written — but the event says the app is limited to
+        // reduced accuracy, and that must still be surfaced.
+        var event = LocationUpdateEvent(sample: sample(1, Self.jittered(1), accuracy: 8))
+        event.accuracyLimited = true
+        harness.provider.emit(event)
+
+        try await waitUntil("reduced accuracy") { harness.coordinator.isPreciseLocationDenied }
+        #expect(harness.coordinator.recordedPointCount == 1)
+        #expect(harness.coordinator.phase == .moving)
+
+        // And a redundant coordinate arriving with a stationary flag still moves the
+        // recording into the stationary state.
+        harness.deliver(sample(2, Self.jittered(1), accuracy: 8, stationary: true))
+        try await waitUntil("stationary") { harness.coordinator.phase == .stationary }
+    }
+
     // MARK: - Stopping
 
     @Test("Stopping closes the session and releases everything")
