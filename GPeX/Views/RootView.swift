@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Where navigation lives.
@@ -19,7 +20,7 @@ struct RootView: View {
                 if coordinator.phase.isActive {
                     ActiveRecordingView(coordinator: coordinator)
                 } else {
-                    HomeView(coordinator: coordinator)
+                    HomeView(coordinator: coordinator, trackStore: trackStore)
                 }
             }
             .navigationTitle("GPeX")
@@ -68,3 +69,32 @@ struct RootView: View {
         }
     }
 }
+
+#if DEBUG
+private struct RootPreview: View {
+    var stage: RecordingPreviewHost<AnyView>.Stage?
+    @State private var world = PreviewWorld()
+
+    var body: some View {
+        RootView(
+            coordinator: world.coordinator,
+            trackStore: world.store,
+            router: world.router
+        )
+        .modelContainer(world.container)
+        .task {
+            guard stage != nil else { return }
+            await world.coordinator.startRecording()
+            world.provider.emit(SessionDiagnostic(source: .serviceSession))
+        }
+    }
+}
+
+#Preview("Idle") {
+    RootPreview()
+}
+
+#Preview("Recording") {
+    RootPreview(stage: .moving)
+}
+#endif

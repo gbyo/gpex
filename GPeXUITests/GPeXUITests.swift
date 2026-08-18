@@ -28,8 +28,10 @@ final class GPeXUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["GPeX"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["startRecording"].exists)
-        XCTAssertTrue(app.staticTexts["Ready to record"].exists)
-        XCTAssertTrue(app.staticTexts["Camera Clock"].exists)
+        // The Camera Clock is a tool, so it lives in the toolbar rather than the list.
+        XCTAssertTrue(app.buttons["cameraClock"].exists)
+        // The list itself is nothing but recorded tracks.
+        XCTAssertTrue(app.staticTexts["Soccer vs Greenwood"].exists)
         // The privacy promise sits on the first screen, not behind an onboarding flow.
         XCTAssertTrue(
             app.staticTexts["Tracks stay on this iPhone until you export or delete them."].exists
@@ -46,15 +48,19 @@ final class GPeXUITests: XCTestCase {
         XCTAssertTrue(headline.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["stopRecording"].exists)
 
-        // The scripted fixes arrive within about a second and the status becomes honest.
-        expectation(for: NSPredicate(format: "label == %@", "Recording"), evaluatedWith: headline)
+        // The scripted fixes arrive within about a second and the status becomes
+        // honest. The status pill states the activity in words — "Moving" or
+        // "Stationary" — rather than collapsing both into "Recording".
+        expectation(
+            for: NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "Moving", "Stationary"),
+            evaluatedWith: headline
+        )
         waitForExpectations(timeout: 15)
 
-        XCTAssertTrue(
-            app.staticTexts["Moving"].exists || app.staticTexts["Stationary"].exists,
-            "The activity should be stated in words"
-        )
-        XCTAssertTrue(app.staticTexts["Locations"].exists)
+        // The pill is one combined accessibility element, so the count is reached by
+        // its identifier rather than by the caption text inside it.
+        let locations = app.descendants(matching: .any).matching(identifier: "locationCount").firstMatch
+        XCTAssertTrue(locations.exists, "The recorded-location count should be on screen")
     }
 
     @MainActor
@@ -147,7 +153,7 @@ final class GPeXUITests: XCTestCase {
         delete.tap()
 
         // Destructive actions are confirmed.
-        let confirm = app.sheets.buttons["Delete Session"].firstMatch
+        let confirm = app.sheets.buttons["Delete Track"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         confirm.tap()
 
@@ -160,8 +166,8 @@ final class GPeXUITests: XCTestCase {
     @MainActor
     func testCameraClockShowsLocalAndUTCTime() {
         let app = launchApp()
-        XCTAssertTrue(app.staticTexts["Camera Clock"].waitForExistence(timeout: 10))
-        app.staticTexts["Camera Clock"].tap()
+        XCTAssertTrue(app.buttons["cameraClock"].waitForExistence(timeout: 10))
+        app.buttons["cameraClock"].tap()
 
         XCTAssertTrue(app.navigationBars["Camera Clock"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["CAMERA CLOCK"].exists)

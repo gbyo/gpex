@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Sets a session's camera clock correction.
@@ -70,3 +71,37 @@ struct ClockCorrectionView: View {
         }
     }
 }
+
+#if DEBUG
+private struct ClockCorrectionPreview: View {
+    let offsetSeconds: Double
+    @State private var world = PreviewWorld()
+
+    var body: some View {
+        NavigationStack {
+            SwiftUI.Group {
+                if let id = world.firstSessionID {
+                    ClockCorrectionView(
+                        sessionID: id,
+                        trackStore: world.store,
+                        offsetSeconds: offsetSeconds
+                    )
+                }
+            }
+        }
+        .modelContainer(world.container)
+    }
+}
+
+#Preview("No correction") {
+    ClockCorrectionPreview(offsetSeconds: 0)
+}
+
+#Preview("Camera 5 s slow") {
+    ClockCorrectionPreview(offsetSeconds: -5)
+}
+
+#Preview("Camera 1 h 2 m fast") {
+    ClockCorrectionPreview(offsetSeconds: 3_720)
+}
+#endif
